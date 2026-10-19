@@ -16,9 +16,14 @@ const createSession = (generation: number): TrendingSession => ({
   inFlight: 0,
 });
 
-export function useTrendingStore(setResults: Dispatch<SetStateAction<StoreGameResult[]>>) {
+export function useTrendingStore(
+  setResults: Dispatch<SetStateAction<StoreGameResult[]>>,
+  storeFrontFilter: string = 'trending'
+) {
   const [isLoading, setIsLoading] = useState(false);
   const sessionRef = useRef<TrendingSession>(createSession(0));
+  const filterRef = useRef(storeFrontFilter);
+  filterRef.current = storeFrontFilter;
 
   const reset = useCallback(() => {
     sessionRef.current = createSession(sessionRef.current.generation + 1);
@@ -53,7 +58,11 @@ export function useTrendingStore(setResults: Dispatch<SetStateAction<StoreGameRe
       session.inFlight += 1;
       setIsLoading(true);
       try {
-        const games = await invoke<StoreGameResult[]>('get_trending_store_games', { start, count });
+        const games = await invoke<StoreGameResult[]>('get_trending_store_games', {
+          start,
+          count,
+          storeFrontFilter: filterRef.current || null,
+        });
         if (sessionRef.current.generation !== generation) return;
         mergeGames(games || []);
       } catch (error) {

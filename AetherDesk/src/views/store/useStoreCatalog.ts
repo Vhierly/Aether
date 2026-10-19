@@ -19,10 +19,11 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
   const [page, setPage] = useState(1);
   const [sortMode, setSortMode] = useState<SortMode>('newest');
   const [genreFilter, setGenreFilter] = useState<string>('');
+  const [storeFrontFilter, setStoreFrontFilter] = useState<string>('trending');
   const observedSettingsRevision = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const storeSearch = useStoreSearch();
-  const trending = useTrendingStore(storeSearch.setResults);
+  const trending = useTrendingStore(storeSearch.setResults, storeFrontFilter);
   const { results, setResults, isLoading, hasSearched, activeQuery, search, clear } = storeSearch;
 
   useEffect(() => {
@@ -60,6 +61,18 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [results.length]);
+
+  const prevStoreFrontFilter = useRef(storeFrontFilter);
+  // Reset trending session when the storefront filter changes.
+  useEffect(() => {
+    if (prevStoreFrontFilter.current === storeFrontFilter) return;
+    prevStoreFrontFilter.current = storeFrontFilter;
+    setPage(1);
+    clear();
+    trending.reset();
+    void trending.loadNext(ITEMS_PER_PAGE * 2);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeFrontFilter]);
 
   const availableGenres = Array.from(
     new Set(results.flatMap((g) => g.genres || []))
@@ -147,6 +160,26 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageKey]);
 
+  const refreshCatalog = () => {
+    setPage(1);
+    clear();
+    trending.reset();
+    void trending.loadNext(ITEMS_PER_PAGE * 2);
+  };
+
+  // Live update: periodically refresh the trending catalog so new releases
+  // appear without a manual reload. Only while the store is in browse mode
+  // (no active search) and the tab is visible.
+  useEffect(() => {
+    if (activeQuery.trim()) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      refreshCatalog();
+    }, 3 * 60 * 1000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeQuery, settingsReady]);
+
   const runSearch = async (query: string) => {
     setPage(1);
     try {
@@ -178,10 +211,13 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     activeQuery,
     runSearch,
     clearSearch,
+    refreshCatalog,
     sortMode,
     setSortMode,
     genreFilter,
     setGenreFilter,
     availableGenres,
+    storeFrontFilter,
+    setStoreFrontFilter,
   };
 }

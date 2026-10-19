@@ -14,7 +14,6 @@ import { useStoreDownload } from './store/useStoreDownload';
 interface StoreViewProps {
   onRefreshUsage?: (forcedKey?: string) => Promise<void>;
   settingsRevision: number;
-  /** Initial settings hydration completed in App; safe to start background preload. */
   settingsReady: boolean;
   useAlternativeGameCards: boolean;
   alternativeCardsOpacity: number;
@@ -53,6 +52,25 @@ export const StoreView = memo(function StoreView({
       <StoreSearchBar isLoading={catalog.isLoading} onSearch={catalog.runSearch} onClear={catalog.clearSearch} />
       <div className="store-separator"></div>
       <div style={{ display: 'flex', gap: '12px', padding: '8px 0', flexWrap: 'wrap', alignItems: 'center' }}>
+        <button className="settings-small-btn" onClick={catalog.refreshCatalog} disabled={catalog.isTrendingLoading}>
+          {catalog.isTrendingLoading ? 'Refreshing…' : 'Refresh'}
+        </button>
+        <label style={{ fontSize: '13px' }}>
+          View:{' '}
+          <select
+            className="settings-select"
+            value={catalog.storeFrontFilter}
+            onChange={(e) => { catalog.setStoreFrontFilter(e.target.value); catalog.setPage(1); }}
+            style={{ width: '140px' }}
+          >
+            <option value="trending">Trending</option>
+            <option value="top_sellers">Top Sellers</option>
+            <option value="latest">New Releases</option>
+            <option value="popular_upcoming">Popular Upcoming</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="discounts">Specials</option>
+          </select>
+        </label>
         <label style={{ fontSize: '13px' }}>
           Sort:{' '}
           <select

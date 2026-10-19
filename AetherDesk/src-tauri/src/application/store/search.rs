@@ -132,6 +132,7 @@ pub async fn get_trending_store_games(
     app: &tauri::AppHandle,
     start: usize,
     count: usize,
+    store_front_filter_override: Option<String>,
 ) -> Result<Vec<UnifiedStoreGame>, String> {
     let settings = load_settings(app);
     if !settings.show_store_front_games {
@@ -141,7 +142,9 @@ pub async fn get_trending_store_games(
     let show_store_dlcs = settings.show_store_dlcs;
     let show_store_nsfw = settings.show_store_nsfw;
     let show_store_delisted = settings.show_store_delisted;
-    let store_front_filter = normalize_store_front_filter(&settings.store_front_filter);
+    let store_front_filter = store_front_filter_override
+        .map(|v| normalize_store_front_filter(&v))
+        .unwrap_or_else(|| normalize_store_front_filter(&settings.store_front_filter));
     let store_currency = normalize_store_currency(&settings.store_currency);
     let steam_country_code = steam_country_code_for_currency(&store_currency);
     let app_version = app.package_info().version.to_string();

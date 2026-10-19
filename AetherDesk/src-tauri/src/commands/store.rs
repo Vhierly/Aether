@@ -33,8 +33,9 @@ pub async fn get_trending_store_games(
     app: tauri::AppHandle,
     start: usize,
     count: usize,
+    store_front_filter: Option<String>,
 ) -> Result<Vec<UnifiedStoreGame>, String> {
-    store::get_trending_store_games(&app, start, count).await
+    store::get_trending_store_games(&app, start, count, store_front_filter).await
 }
 
 #[tauri::command]
