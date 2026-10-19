@@ -232,7 +232,7 @@ pub fn get_cached_store_search(app: &tauri::AppHandle, query: &str) -> CachedSto
 pub async fn check_denuvo_bulk(
     app: &tauri::AppHandle,
     app_ids: Vec<u32>,
-) -> Result<HashMap<u32, bool>, String> {
+) -> Result<HashMap<u32, String>, String> {
     let cache_dir = LocalAppPaths::data_root().join("cache");
     let app_version = app.package_info().version.to_string();
     let settings = load_settings(app);

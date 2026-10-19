@@ -30,7 +30,10 @@ struct DenuvoCacheFile {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DenuvoCacheEntry {
+    #[serde(default)]
     has_denuvo: bool,
+    #[serde(default)]
+    drm_notice: Option<String>,
     checked_at_unix: u64,
 }
 
@@ -65,17 +68,18 @@ impl DrmDetector {
     }
 
     /// Returns app_id -> has_denuvo for the requested IDs.
-    pub async fn detect_many(&self, app_ids: Vec<u32>) -> Result<HashMap<u32, bool>, String> {
+    pub async fn detect_many(&self, app_ids: Vec<u32>) -> Result<HashMap<u32, String>, String> {
         let mut cache = self.load_cache();
         let now = Self::now_unix();
 
         // 1. Serve fresh cache hits without touching the network.
-        let mut results: HashMap<u32, bool> = HashMap::new();
+        let mut results: HashMap<u32, String> = HashMap::new();
         let mut missing: Vec<u32> = Vec::new();
         for app_id in app_ids {
             match cache.entries.get(&app_id) {
                 Some(entry) if now.saturating_sub(entry.checked_at_unix) <= CACHE_TTL_SECONDS => {
-                    results.insert(app_id, entry.has_denuvo);
+                    let notice = entry.drm_notice.clone().unwrap_or_default();
+                    results.insert(app_id, notice);
                 }
                 _ => missing.push(app_id),
             }
@@ -103,7 +107,7 @@ impl DrmDetector {
                         return None;
                     }
                     match Self::fetch_has_denuvo(&client, app_id).await {
-                        Ok(has_denuvo) => Some((app_id, has_denuvo)),
+                        Ok(notice) => Some((app_id, notice)),
                         Err(e) => {
                             if e.starts_with(api::RATE_LIMIT_ERROR_PREFIX) {
                                 breaker.store(true, Ordering::Relaxed);
@@ -130,11 +134,12 @@ impl DrmDetector {
         // 3. Persist only what Steam actually answered.
         if !fetched.is_empty() {
             let now = Self::now_unix();
-            for (app_id, has_denuvo) in &fetched {
+            for (app_id, notice) in &fetched {
                 cache.entries.insert(
                     *app_id,
                     DenuvoCacheEntry {
-                        has_denuvo: *has_denuvo,
+                        has_denuvo: notice.to_lowercase().contains(DENUVO_MARKER),
+                        drm_notice: if notice.is_empty() { None } else { Some(notice.clone()) },
                         checked_at_unix: now,
                     },
                 );
@@ -148,18 +153,18 @@ impl DrmDetector {
         Ok(results)
     }
 
-    async fn fetch_has_denuvo(client: &reqwest::Client, app_id: u32) -> Result<bool, String> {
+    async fn fetch_has_denuvo(client: &reqwest::Client, app_id: u32) -> Result<String, String> {
         let envelope: AppDetailsEnvelope = api::fetch_app_details(client, app_id).await?;
 
-        let has_denuvo = envelope
+        let notice = envelope
             .data
             .as_ref()
             .and_then(|details| details.get("drm_notice"))
-            .and_then(|notice| notice.as_str())
-            .map(|notice| notice.to_lowercase().contains(DENUVO_MARKER))
-            .unwrap_or(false);
+            .and_then(|n| n.as_str())
+            .unwrap_or("")
+            .to_string();
 
-        Ok(has_denuvo)
+        Ok(notice)
     }
 
     fn load_cache(&self) -> DenuvoCacheFile {

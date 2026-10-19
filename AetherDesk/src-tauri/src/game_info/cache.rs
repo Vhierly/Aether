@@ -163,7 +163,7 @@ impl GameInfoCache {
         }
     }
 
-    pub fn merge_denuvo_flags(&self, flags: &HashMap<u32, bool>) {
+    pub fn merge_denuvo_flags(&self, flags: &HashMap<u32, String>) {
         if flags.is_empty() {
             return;
         }
@@ -172,7 +172,7 @@ impl GameInfoCache {
         let mut cache = self.load_cache();
         let mut changed = false;
 
-        for (app_id, has_denuvo) in flags {
+        for (app_id, notice) in flags {
             if *app_id == 0 {
                 continue;
             }
@@ -180,7 +180,7 @@ impl GameInfoCache {
                 .entries
                 .entry(*app_id)
                 .or_insert_with(|| GameInfo::new(*app_id));
-            entry.has_denuvo = Some(*has_denuvo);
+            entry.has_denuvo = Some(notice.to_lowercase().contains("denuvo"));
             entry.updated_at_unix = now;
             changed = true;
         }

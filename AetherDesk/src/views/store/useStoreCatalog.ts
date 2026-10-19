@@ -126,11 +126,11 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     enrichDenuvoFlags(pageGames)
       .then((enriched) => {
         if (cancelled) return;
-        const flags = new Map(enriched.map((game) => [String(game.appId), game.has_denuvo]));
+        const enrichedMap = new Map(enriched.map((game) => [String(game.appId), game]));
         setResults((current) =>
           current.map((game) => {
-            const flag = flags.get(String(game.appId));
-            return flag === undefined ? game : { ...game, has_denuvo: flag };
+            const updated = enrichedMap.get(String(game.appId));
+            return updated === undefined ? game : { ...game, has_denuvo: updated.has_denuvo, drm_protection: updated.drm_protection ?? game.drm_protection };
           })
         );
       })

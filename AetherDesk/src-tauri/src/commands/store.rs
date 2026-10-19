@@ -50,7 +50,7 @@ pub fn get_cached_store_search(
 pub async fn check_denuvo_bulk(
     app: tauri::AppHandle,
     app_ids: Vec<u32>,
-) -> Result<HashMap<u32, bool>, String> {
+) -> Result<HashMap<u32, String>, String> {
     store::check_denuvo_bulk(&app, app_ids).await
 }
 
