@@ -162,14 +162,14 @@ const GameCardInner = <T extends GameCardModel>({
           <span className="game-appid">App ID: {game.appId}</span>
           {(game.has_denuvo || game.uco2_supported || game.crack_status || game.drm_protection) && (
             <div className="game-label-badges" style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-              {game.has_denuvo && <span className="badge-denuvo" title="Denuvo DRM detected">Denuvo</span>}
+              {game.has_denuvo && <span className="badge-denuvo" title="Denuvo Anti-Tamper DRM detected">Denuvo DRM</span>}
               {game.uco2_supported && <span className="badge-uco2" title="Supported by UCOnline2">UCO2</span>}
               {game.crack_status && (
                 <span
                   className={`badge-crack-status badge-crack-${game.crack_status}`}
                   title={`Crack status: ${game.crack_status}`}
                 >
-                  {game.crack_status}
+                  {game.crack_status === 'hypervisor' ? 'HV Crack' : game.crack_status.charAt(0).toUpperCase() + game.crack_status.slice(1)}
                 </span>
               )}
               {!game.has_denuvo && game.drm_protection && game.drm_protection.toLowerCase() !== 'none' && game.drm_protection.toLowerCase() !== 'steam' && !game.drm_protection.toLowerCase().includes('denuvo') && (
