@@ -26,8 +26,16 @@ describe('useTrendingStore', () => {
     await act(() => result.current.trending.loadNext(2));
     await act(() => result.current.trending.loadNext(2));
 
-    expect(invokeMock).toHaveBeenNthCalledWith(1, 'get_trending_store_games', { start: 0, count: 2, storeFrontFilter: 'trending' });
-    expect(invokeMock).toHaveBeenNthCalledWith(2, 'get_trending_store_games', { start: 2, count: 2, storeFrontFilter: 'trending' });
+    expect(invokeMock).toHaveBeenNthCalledWith(1, 'get_trending_store_games', {
+      start: 0,
+      count: 2,
+      storeFrontFilter: 'trending',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(2, 'get_trending_store_games', {
+      start: 2,
+      count: 2,
+      storeFrontFilter: 'trending',
+    });
     expect(result.current.results.map((item) => item.id)).toEqual([1, 2, 3]);
   });
 
@@ -46,8 +54,16 @@ describe('useTrendingStore', () => {
       void result.current.trending.loadNext(20);
     });
 
-    expect(invokeMock).toHaveBeenNthCalledWith(1, 'get_trending_store_games', { start: 0, count: 20, storeFrontFilter: 'trending' });
-    expect(invokeMock).toHaveBeenNthCalledWith(2, 'get_trending_store_games', { start: 20, count: 20, storeFrontFilter: 'trending' });
+    expect(invokeMock).toHaveBeenNthCalledWith(1, 'get_trending_store_games', {
+      start: 0,
+      count: 20,
+      storeFrontFilter: 'trending',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(2, 'get_trending_store_games', {
+      start: 20,
+      count: 20,
+      storeFrontFilter: 'trending',
+    });
     expect(result.current.trending.isLoading).toBe(true);
     await act(async () => {
       resolvers[0]?.([game(1)]);

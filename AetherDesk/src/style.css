@@ -4218,7 +4218,8 @@ body {
   margin-left: auto;
 }
 
-.badge-denuvo, .badge-uco2 {
+.badge-denuvo,
+.badge-uco2 {
   display: inline-block;
   font-size: 9px;
   font-weight: 700;
@@ -4238,7 +4239,6 @@ body {
   color: #ffffff;
   box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
 }
-
 
 .badge-crack-status {
   display: inline-block;
@@ -4281,6 +4281,18 @@ body {
   box-shadow: 0 2px 6px rgba(245, 158, 11, 0.3);
 }
 
+.badge-store-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.4px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background-color: #374151;
+  color: #ffffff;
+}
 .badge-drm-free {
   display: inline-block;
   font-size: 9px;

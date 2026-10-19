@@ -58,10 +58,7 @@ export const Sidebar = memo(function Sidebar({
         </button>
 
         {/* Backup */}
-        <button
-          onClick={() => onTabChange('backup')}
-          className={`nav-item ${activeTab === 'backup' ? 'active' : ''}`}
-        >
+        <button onClick={() => onTabChange('backup')} className={`nav-item ${activeTab === 'backup' ? 'active' : ''}`}>
           Backup
         </button>
 

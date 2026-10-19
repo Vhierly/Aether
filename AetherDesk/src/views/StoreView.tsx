@@ -60,7 +60,10 @@ export const StoreView = memo(function StoreView({
           <select
             className="settings-select"
             value={catalog.storeFrontFilter}
-            onChange={(e) => { catalog.setStoreFrontFilter(e.target.value); catalog.setPage(1); }}
+            onChange={(e) => {
+              catalog.setStoreFrontFilter(e.target.value);
+              catalog.setPage(1);
+            }}
             style={{ width: '140px' }}
           >
             <option value="trending">Trending</option>
@@ -76,7 +79,10 @@ export const StoreView = memo(function StoreView({
           <select
             className="settings-select"
             value={catalog.sortMode}
-            onChange={(e) => { catalog.setSortMode(e.target.value as 'newest' | 'trending' | 'name'); catalog.setPage(1); }}
+            onChange={(e) => {
+              catalog.setSortMode(e.target.value as 'newest' | 'trending' | 'name');
+              catalog.setPage(1);
+            }}
             style={{ width: '120px' }}
           >
             <option value="newest">Newest</option>
@@ -89,12 +95,17 @@ export const StoreView = memo(function StoreView({
           <select
             className="settings-select"
             value={catalog.genreFilter}
-            onChange={(e) => { catalog.setGenreFilter(e.target.value); catalog.setPage(1); }}
+            onChange={(e) => {
+              catalog.setGenreFilter(e.target.value);
+              catalog.setPage(1);
+            }}
             style={{ width: '160px' }}
           >
             <option value="">All genres</option>
             {catalog.availableGenres.map((g) => (
-              <option key={g} value={g}>{g}</option>
+              <option key={g} value={g}>
+                {g}
+              </option>
             ))}
           </select>
         </label>

@@ -76,9 +76,7 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeFrontFilter]);
 
-  const availableGenres = Array.from(
-    new Set(results.flatMap((g) => g.genres || []))
-  ).sort();
+  const availableGenres = Array.from(new Set(results.flatMap((g) => g.genres || []))).sort();
 
   const filteredSortedResults = [...results]
     .filter((g) => (genreFilter ? (g.genres || []).includes(genreFilter) : true))
@@ -130,7 +128,13 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
         setResults((current) =>
           current.map((game) => {
             const updated = enrichedMap.get(String(game.appId));
-            return updated === undefined ? game : { ...game, has_denuvo: updated.has_denuvo, drm_protection: updated.drm_protection ?? game.drm_protection };
+            return updated === undefined
+              ? game
+              : {
+                  ...game,
+                  has_denuvo: updated.has_denuvo,
+                  drm_protection: updated.drm_protection ?? game.drm_protection,
+                };
           })
         );
       })
@@ -162,7 +166,6 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageKey]);
 
-
   useEffect(() => {
     if (pageGames.length === 0) return;
     let cancelled = false;
@@ -189,7 +192,6 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageKey]);
-
 
   useEffect(() => {
     if (pageGames.length === 0) return;
@@ -224,10 +226,13 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
   // (no active search) and the tab is visible.
   useEffect(() => {
     if (activeQuery.trim()) return;
-    const id = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      refreshCatalog();
-    }, 3 * 60 * 1000);
+    const id = window.setInterval(
+      () => {
+        if (document.visibilityState !== 'visible') return;
+        refreshCatalog();
+      },
+      3 * 60 * 1000
+    );
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeQuery, settingsReady]);

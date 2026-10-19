@@ -77,7 +77,6 @@ export const LibraryView = memo(function LibraryView({
     );
   }, [filteredGames]);
 
-
   useEffect(() => {
     if (games.length === 0) {
       setEnrichedGames([]);
@@ -94,7 +93,7 @@ export const LibraryView = memo(function LibraryView({
         if (cancelled) return;
         const pcdrm = await enrichPcDrm(crack as any);
         if (!cancelled) setEnrichedGames(pcdrm as InstalledGame[]);
-      } catch (err) {
+      } catch {
         if (!cancelled) setEnrichedGames(games);
       }
     })();

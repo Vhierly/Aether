@@ -47,7 +47,8 @@ export const BackupView = memo(function BackupView() {
       <div className="store-header">
         <h1 className="store-title">Backup</h1>
         <p className="store-subtitle">
-          Per-game backups stored under AetherData/backup. Lua originals, version history, manifests, cracks and original files.
+          Per-game backups stored under AetherData/backup. Lua originals, version history, manifests, cracks and
+          original files.
         </p>
       </div>
       <div className="store-separator" />
