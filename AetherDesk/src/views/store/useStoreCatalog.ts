@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { enrichDenuvoFlags } from '../../hooks/useDenuvoEnrichment';
 import { enrichUco2Flags } from '../../hooks/useUco2Enrichment';
+import { enrichCrackStatus } from '../../hooks/useCrackStatusEnrichment';
 import { enrichGenres } from '../../hooks/useGenreEnrichment';
 import { useStoreSearch } from '../../hooks/useStoreSearch';
 import { preloadGameCovers } from '../../ui/GameCover';
@@ -154,6 +155,28 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
         );
       })
       .catch((error) => console.warn('UCO2 enrichment failed:', error));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageKey]);
+
+
+  useEffect(() => {
+    if (pageGames.length === 0 || !activeQuery.trim()) return;
+    let cancelled = false;
+    enrichCrackStatus(pageGames)
+      .then((enriched) => {
+        if (cancelled) return;
+        const map = new Map(enriched.map((game) => [String(game.appId), game.crack_status]));
+        setResults((current) =>
+          current.map((game) => {
+            const status = map.get(String(game.appId));
+            return status === undefined ? game : { ...game, crack_status: status };
+          })
+        );
+      })
+      .catch((error) => console.warn('Crack status enrichment failed:', error));
     return () => {
       cancelled = true;
     };

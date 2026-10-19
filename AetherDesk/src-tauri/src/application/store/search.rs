@@ -244,6 +244,115 @@ pub async fn check_denuvo_bulk(
     Ok(results)
 }
 
+pub async fn check_crack_status_bulk(
+    _app: &tauri::AppHandle,
+    app_ids: Vec<u32>,
+) -> Result<HashMap<u32, String>, String> {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    const SUPABASE_URL: &str = "https://lhvknkrfhehcclzlabsl.supabase.co";
+    const SUPABASE_ANON_KEY: &str =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxodmtua3JmaGVoY2NsemxhYnNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NzM0MTksImV4cCI6MjA5NDQ0OTQxOX0.B7YOW_hpn2zHxR-sfHgiNgqidpfESwJpixLrh-MevE8";
+    const CACHE_TTL: u64 = 24 * 60 * 60;
+
+    let cache_dir = LocalAppPaths::data_root().join("cache");
+    let _ = fs::create_dir_all(&cache_dir);
+    let cache_path = cache_dir.join("crack_status_cache.json");
+
+    let mut result: HashMap<u32, String> = HashMap::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    // Load cache.
+    let mut cache: serde_json::Value = serde_json::Value::Null;
+    if let Ok(content) = fs::read_to_string(&cache_path) {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
+            cache = parsed;
+        }
+    }
+    let mut need_fetch: Vec<u32> = Vec::new();
+    for id in &app_ids {
+        if let Some(obj) = cache.get("entries").and_then(|v| v.as_object()) {
+            if let Some(entry) = obj.get(&id.to_string()) {
+                let ts = entry.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
+                if now.saturating_sub(ts) <= CACHE_TTL {
+                    if let Some(status) = entry.get("status").and_then(|v| v.as_str()) {
+                        result.insert(*id, status.to_string());
+                        continue;
+                    }
+                }
+            }
+        }
+        need_fetch.push(*id);
+    }
+
+    if need_fetch.is_empty() {
+        return Ok(result);
+    }
+
+    // Fetch from Supabase.
+    let ids_csv = need_fetch
+        .iter()
+        .map(|id| id.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let url = format!(
+        "{}/rest/v1/games?select=steam_appid,status&steam_appid=in.({})",
+        SUPABASE_URL, ids_csv
+    );
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    if let Ok(resp) = client
+        .get(&url)
+        .header("apikey", SUPABASE_ANON_KEY)
+        .header("Authorization", format!("Bearer {}", SUPABASE_ANON_KEY))
+        .send()
+        .await
+    {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            if let Some(arr) = json.as_array() {
+                for item in arr {
+                    let appid = item
+                        .get("steam_appid")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.parse::<u32>().ok());
+                    let status = item.get("status").and_then(|v| v.as_str());
+                    if let (Some(id), Some(st)) = (appid, status) {
+                        result.insert(id, st.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // Update cache.
+    let mut entries = cache
+        .get("entries")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    if !entries.is_object() {
+        entries = serde_json::json!({});
+    }
+    let obj = entries.as_object_mut().unwrap();
+    for id in &need_fetch {
+        if let Some(st) = result.get(id) {
+            obj.insert(
+                id.to_string(),
+                serde_json::json!({"status": st, "ts": now}),
+            );
+        }
+    }
+    let stamped = serde_json::json!({"entries": entries});
+    let _ = fs::write(&cache_path, serde_json::to_string(&stamped).unwrap_or_default());
+
+    Ok(result)
+}
+
 pub async fn get_genres_bulk(
     app: &tauri::AppHandle,
     app_ids: Vec<u32>,

@@ -8,6 +8,7 @@ export interface StoreGameResult {
   has_manifest: boolean;
   has_denuvo: boolean;
   uco2_supported?: boolean;
+  crack_status?: string;
   genres?: string[];
   release_date_unix?: number;
   has_nsfw?: boolean;

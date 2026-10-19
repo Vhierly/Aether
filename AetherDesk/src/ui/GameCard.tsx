@@ -14,6 +14,8 @@ export interface GameCardModel {
   installed?: boolean;
   /** UCO2 support flag (library games). */
   uco2_supported?: boolean;
+  /** Crack status from isitcracked.com (cracked/uncracked/unreleased/...). */
+  crack_status?: string;
   /**
    * Steam has an appmanifest for this game but is still writing its content:
    * the card shows `Installing` instead of `Installed`/`Available`.
@@ -156,10 +158,18 @@ const GameCardInner = <T extends GameCardModel>({
             {game.name}
           </h3>
           <span className="game-appid">App ID: {game.appId}</span>
-          {(game.has_denuvo || game.uco2_supported) && (
+          {(game.has_denuvo || game.uco2_supported || game.crack_status) && (
             <div className="game-label-badges" style={{ display: 'flex', gap: 4, marginTop: 4 }}>
               {game.has_denuvo && <span className="badge-denuvo" title="Denuvo DRM detected">Denuvo</span>}
               {game.uco2_supported && <span className="badge-uco2" title="Supported by UCOnline2">UCO2</span>}
+              {game.crack_status && (
+                <span
+                  className={`badge-crack-status badge-crack-${game.crack_status}`}
+                  title={`Crack status: ${game.crack_status}`}
+                >
+                  {game.crack_status}
+                </span>
+              )}
             </div>
           )}
         </div>

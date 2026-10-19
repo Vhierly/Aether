@@ -55,6 +55,14 @@ pub async fn check_denuvo_bulk(
 }
 
 #[tauri::command]
+pub async fn check_crack_status_bulk(
+    app: tauri::AppHandle,
+    app_ids: Vec<u32>,
+) -> Result<HashMap<u32, String>, String> {
+    store::check_crack_status_bulk(&app, app_ids).await
+}
+
+#[tauri::command]
 pub async fn get_genres_bulk(
     app: tauri::AppHandle,
     app_ids: Vec<u32>,
