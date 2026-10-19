@@ -247,7 +247,6 @@ pub async fn check_denuvo_bulk(
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
 pub struct CrackInfo {
     pub status: String,
-    pub drm: Option<String>,
 }
 
 pub async fn check_crack_status_bulk(
@@ -286,9 +285,8 @@ pub async fn check_crack_status_bulk(
                 let ts = entry.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
                 if now.saturating_sub(ts) <= CACHE_TTL {
                     let status = entry.get("status").and_then(|v| v.as_str()).map(String::from);
-                    let drm = entry.get("drm").and_then(|v| v.as_str()).map(String::from);
                     if let Some(st) = status {
-                        result.insert(*id, CrackInfo { status: st, drm });
+                        result.insert(*id, CrackInfo { status: st });
                         continue;
                     }
                 }
@@ -308,7 +306,7 @@ pub async fn check_crack_status_bulk(
         .collect::<Vec<_>>()
         .join(",");
     let url = format!(
-        "{}/rest/v1/games?select=steam_appid,status,drm_protection&steam_appid=in.({})",
+        "{}/rest/v1/games?select=steam_appid,status&steam_appid=in.({})",
         SUPABASE_URL, ids_csv
     );
     let client = reqwest::Client::builder()
@@ -330,9 +328,8 @@ pub async fn check_crack_status_bulk(
                         .and_then(|v| v.as_str())
                         .and_then(|s| s.parse::<u32>().ok());
                     let status = item.get("status").and_then(|v| v.as_str());
-                    let drm = item.get("drm_protection").and_then(|v| v.as_str()).map(String::from);
                     if let (Some(id), Some(st)) = (appid, status) {
-                        result.insert(id, CrackInfo { status: st.to_string(), drm });
+                        result.insert(id, CrackInfo { status: st.to_string() });
                     }
                 }
             }
@@ -352,7 +349,7 @@ pub async fn check_crack_status_bulk(
         if let Some(info) = result.get(id) {
             obj.insert(
                 id.to_string(),
-                serde_json::json!({"status": info.status, "drm": info.drm, "ts": now}),
+                serde_json::json!({"status": info.status, "ts": now}),
             );
         }
     }
@@ -483,9 +480,10 @@ pub async fn check_pc_drm_bulk(
         if !wt.contains(&id.to_string()) {
             continue;
         }
-        // Parse DRM template.
+        // Parse DRM template. "{{DRM|" is 6 chars, so +6 lands on the value;
+        // +7 would silently eat its first letter ("Denuvo" -> "enuvo").
         let drm = if let Some(start) = wt.find("{{DRM|") {
-            let rest = &wt[start + 7..];
+            let rest = &wt[start + 6..];
             if let Some(end) = rest.find("}}") {
                 let val = rest[..end].trim();
                 if val.eq_ignore_ascii_case("none") || val.is_empty() {
