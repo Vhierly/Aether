@@ -10,8 +10,8 @@ AetherDesk is a Windows desktop tool for browsing the Steam store, managing game
 | DRM labels | Reads Steam DRM from `drm_notice`, labels empty as "Steam DRM", PCGamingWiki fallback, isitcracked crack status | Earlier DRM logic |
 | Store badges | Combined pipe-separated tag: `UCO2 \| Cracked \| Denuvo` | Separate badges |
 | Library | Denuvo + UCO2 badges on game cards | Same |
-| Family share | Not yet merged | Cosmetic family-share labels |
-| Online fixes | Not yet merged | OFME+UCO2 conflict handling, cross-drive fixes |
+| Family share | Cosmetic family-share labels on game cards | Cosmetic family-share labels |
+| Online | OFME+UCO2 conflict handling, cross-drive fixes | OFME+UCO2 conflict handling, cross-drive fixes |
 
 ## Features
 
