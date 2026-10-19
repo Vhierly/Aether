@@ -52,6 +52,36 @@ export const StoreView = memo(function StoreView({
 
       <StoreSearchBar isLoading={catalog.isLoading} onSearch={catalog.runSearch} onClear={catalog.clearSearch} />
       <div className="store-separator"></div>
+      <div style={{ display: 'flex', gap: '12px', padding: '8px 0', flexWrap: 'wrap', alignItems: 'center' }}>
+        <label style={{ fontSize: '13px' }}>
+          Sort:{' '}
+          <select
+            className="settings-select"
+            value={catalog.sortMode}
+            onChange={(e) => { catalog.setSortMode(e.target.value as 'newest' | 'trending' | 'name'); catalog.setPage(1); }}
+            style={{ width: '120px' }}
+          >
+            <option value="newest">Newest</option>
+            <option value="trending">Trending</option>
+            <option value="name">Name A-Z</option>
+          </select>
+        </label>
+        <label style={{ fontSize: '13px' }}>
+          Genre:{' '}
+          <select
+            className="settings-select"
+            value={catalog.genreFilter}
+            onChange={(e) => { catalog.setGenreFilter(e.target.value); catalog.setPage(1); }}
+            style={{ width: '160px' }}
+          >
+            <option value="">All genres</option>
+            {catalog.availableGenres.map((g) => (
+              <option key={g} value={g}>{g}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="store-separator"></div>
 
       <StoreGameGrid
         games={catalog.pageGames}

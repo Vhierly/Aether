@@ -159,6 +159,7 @@ fn main() {
             commands::store::get_cached_store_search,
             commands::store::get_trending_store_games,
             commands::store::check_denuvo_bulk,
+            commands::store::get_genres_bulk,
             commands::store::trigger_hubcap_download,
             commands::store::trigger_luatools_download,
             commands::store::trigger_ryuu_download,

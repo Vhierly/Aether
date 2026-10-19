@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { enrichDenuvoFlags } from '../../hooks/useDenuvoEnrichment';
 import { enrichUco2Flags } from '../../hooks/useUco2Enrichment';
+import { enrichGenres } from '../../hooks/useGenreEnrichment';
 import { useStoreSearch } from '../../hooks/useStoreSearch';
 import { preloadGameCovers } from '../../ui/GameCover';
 import { useTrendingStore } from './useTrendingStore';
 
 const ITEMS_PER_PAGE = 20;
+
+type SortMode = 'newest' | 'trending' | 'name';
 
 interface Params {
   settingsRevision: number;
@@ -14,6 +17,8 @@ interface Params {
 
 export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
   const [page, setPage] = useState(1);
+  const [sortMode, setSortMode] = useState<SortMode>('newest');
+  const [genreFilter, setGenreFilter] = useState<string>('');
   const observedSettingsRevision = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const storeSearch = useStoreSearch();
@@ -30,14 +35,53 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
       return;
     }
     clear();
-    // Refresh once per settings generation; search helpers intentionally keep
-    // request ownership internally and need not retrigger this effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsRevision, settingsReady]);
 
-  const totalPages = Math.ceil(results.length / ITEMS_PER_PAGE) || 1;
+  // Enrich genres for any result that doesn't have them yet.
+  useEffect(() => {
+    const missing = results.filter((g) => !g.genres);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    enrichGenres(missing)
+      .then((enriched) => {
+        if (cancelled) return;
+        const map = new Map(enriched.map((g) => [String(g.appId), g.genres]));
+        setResults((current) =>
+          current.map((g) => {
+            const genres = map.get(String(g.appId));
+            return genres === undefined ? g : { ...g, genres };
+          })
+        );
+      })
+      .catch((error) => console.warn('Genre enrichment failed:', error));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results.length]);
+
+  const availableGenres = Array.from(
+    new Set(results.flatMap((g) => g.genres || []))
+  ).sort();
+
+  const filteredSortedResults = [...results]
+    .filter((g) => (genreFilter ? (g.genres || []).includes(genreFilter) : true))
+    .sort((a, b) => {
+      if (sortMode === 'newest') {
+        const da = a.release_date_unix ?? 0;
+        const db = b.release_date_unix ?? 0;
+        return db - da;
+      }
+      if (sortMode === 'name') {
+        return a.name.localeCompare(b.name);
+      }
+      return 0; // trending: keep original order
+    });
+
+  const totalPages = Math.ceil(filteredSortedResults.length / ITEMS_PER_PAGE) || 1;
   const startIndex = (page - 1) * ITEMS_PER_PAGE;
-  const pageGames = results.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  const pageGames = filteredSortedResults.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   const pageKey = pageGames.map((game) => game.appId).join(',');
 
   useEffect(() => {
@@ -46,7 +90,6 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
       pageGames.map((game) => ({ appId: game.appId, imageUrl: game.imageUrl })),
       pageGames.length
     );
-    // pageKey represents the visible page identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageKey]);
 
@@ -55,13 +98,12 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     if (results.length < (page + 1) * ITEMS_PER_PAGE) {
       void trending.loadNext(ITEMS_PER_PAGE * 2);
     }
-    // Session refs own offsets/in-flight requests; length/page are the top-up trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, results.length, activeQuery, settingsReady]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 });
-  }, [page, activeQuery]);
+  }, [page, activeQuery, sortMode, genreFilter]);
 
   useEffect(() => {
     if (pageGames.length === 0 || !activeQuery.trim()) return;
@@ -81,7 +123,6 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     return () => {
       cancelled = true;
     };
-    // pageKey is the complete enrichment request identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageKey]);
 
@@ -103,7 +144,6 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     return () => {
       cancelled = true;
     };
-    // pageKey is the complete enrichment request identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageKey]);
 
@@ -138,5 +178,10 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     activeQuery,
     runSearch,
     clearSearch,
+    sortMode,
+    setSortMode,
+    genreFilter,
+    setGenreFilter,
+    availableGenres,
   };
 }

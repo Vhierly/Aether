@@ -54,6 +54,14 @@ pub async fn check_denuvo_bulk(
 }
 
 #[tauri::command]
+pub async fn get_genres_bulk(
+    app: tauri::AppHandle,
+    app_ids: Vec<u32>,
+) -> Result<HashMap<u32, Vec<String>>, String> {
+    store::get_genres_bulk(&app, app_ids).await
+}
+
+#[tauri::command]
 pub async fn trigger_hubcap_download(
     app: tauri::AppHandle,
     app_id: u32,

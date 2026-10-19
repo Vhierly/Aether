@@ -29,7 +29,7 @@ pub use model::{
     LuaToolsDownloadRequest, StoreSuggestItem,
 };
 pub use search::{
-    check_denuvo_bulk, get_cached_store_search, get_trending_store_games, search_store,
+    check_denuvo_bulk, get_cached_store_search, get_genres_bulk, get_trending_store_games, search_store,
     suggest_store_games,
 };
 pub use specific_version::{

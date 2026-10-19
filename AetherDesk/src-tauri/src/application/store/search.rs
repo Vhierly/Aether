@@ -11,6 +11,7 @@ use crate::providers::hubcap::HubcapClient;
 use crate::steam::app_names::SteamAppNameResolver;
 use crate::store::cache::StoreSearchCache;
 use crate::store::drm::DrmDetector;
+use crate::store::genres::GenreDetector;
 use crate::store::service::{StoreService, UnifiedStoreGame};
 use std::collections::HashMap;
 
@@ -237,6 +238,18 @@ pub async fn check_denuvo_bulk(
         .detect_many(app_ids)
         .await?;
     GameInfoCache::new(&cache_dir, info_cache_version).merge_denuvo_flags(&results);
+    Ok(results)
+}
+
+pub async fn get_genres_bulk(
+    app: &tauri::AppHandle,
+    app_ids: Vec<u32>,
+) -> Result<HashMap<u32, Vec<String>>, String> {
+    let cache_dir = LocalAppPaths::data_root().join("cache");
+    let app_version = app.package_info().version.to_string();
+    let results = GenreDetector::new(&cache_dir, app_version)
+        .detect_many(app_ids)
+        .await?;
     Ok(results)
 }
 
