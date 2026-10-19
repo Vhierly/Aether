@@ -160,6 +160,7 @@ fn main() {
             commands::store::get_trending_store_games,
             commands::store::check_denuvo_bulk,
             commands::store::check_crack_status_bulk,
+            commands::store::check_pc_drm_bulk,
             commands::store::get_genres_bulk,
             commands::store::trigger_hubcap_download,
             commands::store::trigger_luatools_download,

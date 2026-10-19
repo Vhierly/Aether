@@ -63,6 +63,15 @@ pub async fn check_crack_status_bulk(
 }
 
 #[tauri::command]
+pub async fn check_pc_drm_bulk(
+    app: tauri::AppHandle,
+    app_ids: Vec<u32>,
+    names: Vec<String>,
+) -> Result<HashMap<u32, String>, String> {
+    store::check_pc_drm_bulk(&app, app_ids, names).await
+}
+
+#[tauri::command]
 pub async fn get_genres_bulk(
     app: tauri::AppHandle,
     app_ids: Vec<u32>,

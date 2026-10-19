@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { enrichDenuvoFlags } from '../../hooks/useDenuvoEnrichment';
 import { enrichUco2Flags } from '../../hooks/useUco2Enrichment';
 import { enrichCrackStatus } from '../../hooks/useCrackStatusEnrichment';
+import { enrichPcDrm } from '../../hooks/usePcDrmEnrichment';
 import { enrichGenres } from '../../hooks/useGenreEnrichment';
 import { useStoreSearch } from '../../hooks/useStoreSearch';
 import { preloadGameCovers } from '../../ui/GameCover';
@@ -183,6 +184,28 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
         );
       })
       .catch((error) => console.warn('Crack status enrichment failed:', error));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageKey]);
+
+
+  useEffect(() => {
+    if (pageGames.length === 0) return;
+    let cancelled = false;
+    enrichPcDrm(pageGames)
+      .then((enriched) => {
+        if (cancelled) return;
+        const map = new Map(enriched.map((game) => [String(game.appId), game.drm_protection]));
+        setResults((current) =>
+          current.map((game) => {
+            const drm = map.get(String(game.appId));
+            return drm === undefined ? game : { ...game, drm_protection: drm };
+          })
+        );
+      })
+      .catch((error) => console.warn('PC DRM enrichment failed:', error));
     return () => {
       cancelled = true;
     };

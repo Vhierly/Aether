@@ -14,6 +14,7 @@ import { useLibraryGames, InstalledGame } from '../hooks/useLibraryGames';
 import { enrichUco2Flags } from '../hooks/useUco2Enrichment';
 import { enrichDenuvoFlags } from '../hooks/useDenuvoEnrichment';
 import { enrichCrackStatus } from '../hooks/useCrackStatusEnrichment';
+import { enrichPcDrm } from '../hooks/usePcDrmEnrichment';
 import { useLibraryInstallFilter } from '../hooks/useLibraryInstallFilter';
 import { StatusType } from '../types/ui';
 import { requireSteamPath } from '../hooks/useSettings';
@@ -90,7 +91,9 @@ export const LibraryView = memo(function LibraryView({
         const denuvo = await enrichDenuvoFlags(uco2 as any);
         if (cancelled) return;
         const crack = await enrichCrackStatus(denuvo as any);
-        if (!cancelled) setEnrichedGames(crack as InstalledGame[]);
+        if (cancelled) return;
+        const pcdrm = await enrichPcDrm(crack as any);
+        if (!cancelled) setEnrichedGames(pcdrm as InstalledGame[]);
       } catch (err) {
         if (!cancelled) setEnrichedGames(games);
       }

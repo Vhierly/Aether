@@ -362,6 +362,176 @@ pub async fn check_crack_status_bulk(
     Ok(result)
 }
 
+
+fn percent_encode(input: &str) -> String {
+    let mut out = String::new();
+    for b in input.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            b' ' => out.push_str("%20"),
+            _ => {
+                out.push_str(&format!("%{:02X}", b));
+            }
+        }
+    }
+    out
+}
+
+pub async fn check_pc_drm_bulk(
+    _app: &tauri::AppHandle,
+    app_ids: Vec<u32>,
+    names: Vec<String>,
+) -> Result<HashMap<u32, String>, String> {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    const CACHE_TTL: u64 = 7 * 24 * 60 * 60;
+    let cache_dir = LocalAppPaths::data_root().join("cache");
+    let _ = fs::create_dir_all(&cache_dir);
+    let cache_path = cache_dir.join("pc_drm_cache.json");
+
+    let mut result: HashMap<u32, String> = HashMap::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    // Load cache.
+    let mut cache: serde_json::Value = serde_json::Value::Null;
+    if let Ok(content) = fs::read_to_string(&cache_path) {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
+            cache = parsed;
+        }
+    }
+
+    let mut need_fetch: Vec<(u32, String)> = Vec::new();
+    for (id, name) in app_ids.iter().zip(names.iter()) {
+        if let Some(obj) = cache.get("entries").and_then(|v| v.as_object()) {
+            if let Some(entry) = obj.get(&id.to_string()) {
+                let ts = entry.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
+                if now.saturating_sub(ts) <= CACHE_TTL {
+                    if let Some(drm) = entry.get("drm").and_then(|v| v.as_str()) {
+                        result.insert(*id, drm.to_string());
+                        continue;
+                    }
+                }
+            }
+        }
+        need_fetch.push((*id, name.clone()));
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .user_agent("AetherDesk/1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    for (id, name) in &need_fetch {
+        // Search PCGamingWiki by name.
+        let search_url = format!(
+            "https://www.pcgamingwiki.com/w/api.php?action=query&list=search&srsearch={}&srlimit=5&format=json",
+            percent_encode(name)
+        );
+        let title = match client.get(&search_url).send().await {
+            Ok(resp) => {
+                if let Ok(json) = resp.json::<serde_json::Value>().await {
+                    json.get("query")
+                        .and_then(|q| q.get("search"))
+                        .and_then(|s| s.as_array())
+                        .and_then(|arr| arr.first())
+                        .and_then(|o| o.get("title"))
+                        .and_then(|t| t.as_str())
+                        .map(String::from)
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        };
+
+        let Some(title) = title else { continue; };
+
+        // Fetch wikitext.
+        let content_url = format!(
+            "https://www.pcgamingwiki.com/w/api.php?action=query&prop=revisions&rvprop=content&titles={}&format=json",
+            percent_encode(&title)
+        );
+        let wikitext = match client.get(&content_url).send().await {
+            Ok(resp) => {
+                if let Ok(json) = resp.json::<serde_json::Value>().await {
+                    json.get("query")
+                        .and_then(|q| q.get("pages"))
+                        .and_then(|p| p.as_object())
+                        .and_then(|o| o.values().next())
+                        .and_then(|v| v.get("revisions"))
+                        .and_then(|r| r.as_array())
+                        .and_then(|a| a.first())
+                        .and_then(|r| r.get("*"))
+                        .and_then(|c| c.as_str())
+                        .map(String::from)
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        };
+
+        let Some(wt) = wikitext else { continue; };
+        // Verify steam appid present to avoid wrong game.
+        if !wt.contains(&id.to_string()) {
+            continue;
+        }
+        // Parse DRM template.
+        let drm = if let Some(start) = wt.find("{{DRM|") {
+            let rest = &wt[start + 7..];
+            if let Some(end) = rest.find("}}") {
+                let val = rest[..end].trim();
+                if val.eq_ignore_ascii_case("none") || val.is_empty() {
+                    "None".to_string()
+                } else {
+                    // Take first DRM name (before comma or pipe).
+                    val.split(|c: char| c == ',' || c == '|')
+                        .next()
+                        .unwrap_or(val)
+                        .trim()
+                        .to_string()
+                }
+            } else {
+                continue;
+            }
+        } else {
+            continue;
+        };
+
+        result.insert(*id, drm);
+    }
+
+    // Update cache.
+    let mut entries = cache
+        .get("entries")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    if !entries.is_object() {
+        entries = serde_json::json!({});
+    }
+    let obj = entries.as_object_mut().unwrap();
+    for (id, drm) in &result {
+        // only cache newly fetched? cache all results present
+        if need_fetch.iter().any(|(x, _)| x == id) {
+            obj.insert(
+                id.to_string(),
+                serde_json::json!({"drm": drm, "ts": now}),
+            );
+        }
+    }
+    let stamped = serde_json::json!({"entries": entries});
+    let _ = fs::write(&cache_path, serde_json::to_string(&stamped).unwrap_or_default());
+
+    Ok(result)
+}
+
 pub async fn get_genres_bulk(
     app: &tauri::AppHandle,
     app_ids: Vec<u32>,
