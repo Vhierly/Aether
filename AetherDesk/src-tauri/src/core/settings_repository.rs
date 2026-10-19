@@ -386,6 +386,7 @@ pub(crate) fn merge_settings(
 #[cfg(test)]
 mod repository_tests {
     use super::*;
+    #[cfg(target_os = "windows")]
     #[test]
     fn load_reported_distinguishes_fresh_loaded_and_corrupt() {
         // Fresh install: nothing on disk.
@@ -451,6 +452,7 @@ mod repository_tests {
         assert!(!error.contains("secret"));
         assert!(merge_settings(&base, &requested, &requested).is_ok());
     }
+    #[cfg(target_os = "windows")]
     #[test]
     fn update_or_reset_quarantines_garbage_and_starts_from_defaults() {
         let dir = tempfile::tempdir().unwrap();
@@ -477,6 +479,7 @@ mod repository_tests {
         let loaded = manager.try_load().unwrap();
         assert_eq!(loaded.custom_game_name, "fresh start");
     }
+    #[cfg(target_os = "windows")]
     #[test]
     fn update_or_reset_keeps_healthy_state_untouched() {
         let dir = tempfile::tempdir().unwrap();

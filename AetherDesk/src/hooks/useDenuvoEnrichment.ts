@@ -11,8 +11,10 @@ export const enrichDenuvoFlags = async <T extends DenuvoEnrichableGame>(games: T
 
   const denuvoMap: Record<string, boolean> = await invoke('check_denuvo_bulk', { appIds });
 
-  return games.map((game) => ({
-    ...game,
-    has_denuvo: Boolean(denuvoMap[String(game.appId)]),
-  }));
+  return games.map((game) => {
+    const flag = denuvoMap[String(game.appId)];
+    // Preserve the previous value when Steam did not answer (rate limit /
+    // transient failure) instead of flipping a known title to "no Denuvo".
+    return flag === undefined ? game : { ...game, has_denuvo: Boolean(flag) };
+  });
 };

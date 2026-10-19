@@ -360,12 +360,12 @@ fn merge_appdetails_value(info: &mut GameInfo, data: &serde_json::Value) {
     }
 
     let drm_notice = string_field(data, "drm_notice");
-    info.has_denuvo = Some(
-        drm_notice
-            .as_ref()
-            .map(|notice| notice.to_lowercase().contains("denuvo"))
-            .unwrap_or(false),
-    );
+    // Only overwrite when Steam actually reported a drm_notice: a missing
+    // field (e.g. the store-page scrape fallback) must not clobber a
+    // previously known Denuvo flag with `false`.
+    if let Some(notice) = drm_notice.as_ref() {
+        info.has_denuvo = Some(notice.to_lowercase().contains("denuvo"));
+    }
 
     let screenshots = screenshots_field(data);
     info.screenshots = screenshots.clone();
