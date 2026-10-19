@@ -163,33 +163,26 @@ const GameCardInner = <T extends GameCardModel>({
           {(game.has_denuvo || game.uco2_supported || game.crack_status || game.drm_protection) && (
             <div className="game-label-badges" style={{ display: 'flex', gap: 4, marginTop: 4 }}>
               {game.uco2_supported && <span className="badge-uco2" title="Supported by UCOnline2">UCO2</span>}
-              {(() => {
-                const crackLabel = game.crack_status === 'hypervisor' ? 'HV Crack'
-                  : game.crack_status ? game.crack_status.charAt(0).toUpperCase() + game.crack_status.slice(1) : null;
-                let drmLabel: string | null = null;
-                if (game.has_denuvo) drmLabel = 'Denuvo';
-                else if (game.drm_protection) {
-                  const v = game.drm_protection;
-                  const l = v.toLowerCase();
-                  if (l === 'none') drmLabel = 'DRM-Free';
-                  else if (/team|offline|ffline|=/.test(v) || v.length > 30) drmLabel = 'DRM';
-                  else drmLabel = v;
-                }
-                const parts = [crackLabel, drmLabel].filter(Boolean) as string[];
-                if (parts.length === 0) return null;
-                const label = parts.join(' ');
-                const cls = drmLabel === 'DRM-Free' ? 'badge-drm-free'
-                  : drmLabel === 'Denuvo' ? 'badge-denuvo'
-                  : 'badge-drm';
-                return (
-                  <span
-                    className={cls}
-                    title={`Crack: ${game.crack_status ?? 'n/a'} · DRM: ${game.drm_protection ?? (game.has_denuvo ? 'Denuvo' : 'n/a')}`}
-                  >
-                    {label}
-                  </span>
-                );
-              })()}
+              {game.crack_status && (
+                <span
+                  className={`badge-crack-status badge-crack-${game.crack_status}`}
+                  title={`Crack status: ${game.crack_status}`}
+                >
+                  {game.crack_status === 'hypervisor' ? 'HV Crack' : game.crack_status.charAt(0).toUpperCase() + game.crack_status.slice(1)}
+                </span>
+              )}
+              {game.has_denuvo && <span className="badge-denuvo" title="Denuvo Anti-Tamper DRM detected">Denuvo</span>}
+              {!game.has_denuvo && game.drm_protection && game.drm_protection.toLowerCase() === 'none' && (
+                <span className="badge-drm-free" title="No DRM detected">DRM-Free</span>
+              )}
+              {!game.has_denuvo && game.drm_protection && game.drm_protection.toLowerCase() !== 'none' && game.drm_protection.toLowerCase() !== 'steam' && !game.drm_protection.toLowerCase().includes('denuvo') && (
+                <span className="badge-drm" title={`DRM: ${game.drm_protection}`}>
+                  {/team|offline|ffline|=/.test(game.drm_protection) || game.drm_protection.length > 30 ? 'DRM' : game.drm_protection}
+                </span>
+              )}
+              {!game.has_denuvo && game.drm_protection && game.drm_protection.toLowerCase() === 'steam' && (
+                <span className="badge-drm" title="Steam DRM">Steam</span>
+              )}
             </div>
           )}
         </div>
