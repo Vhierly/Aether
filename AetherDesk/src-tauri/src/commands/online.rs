@@ -395,3 +395,94 @@ fn is_exe_running(exe_path: &Path) -> bool {
         .values()
         .any(|process| process.name().to_ascii_lowercase() == target_lower)
 }
+
+/// Bulk UCO2-support check.
+///
+/// Combines two sources:
+///   1. The community compatibility list at uco2list.iforgor.cc (store-side,
+///      fetched+cached with a 24h TTL) — gives labels for games that are not
+///      installed.
+///   2. On-disk detection via `online::detect::GameInspector` for installed
+///      games (authoritative for Unity + networking stack).
+#[tauri::command]
+pub async fn check_uco2_bulk(
+    app: tauri::AppHandle,
+    app_ids: Vec<u32>,
+) -> Result<std::collections::HashMap<u32, bool>, String> {
+    use crate::steam::library::SteamLibraryScanner;
+    use crate::core::settings::load_settings;
+    use crate::steam::resolve::resolve_steam_path;
+    use std::collections::HashMap;
+    use std::fs;
+
+    let cache_dir = LocalAppPaths::data_root().join("cache");
+    let _ = fs::create_dir_all(&cache_dir);
+    let allowlist_path = cache_dir.join("uco2_allowlist_cache.json");
+
+    let mut allowlist: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let mut need_fetch = true;
+    if let Ok(content) = fs::read_to_string(&allowlist_path) {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
+            let ts = parsed.get("fetched_at").and_then(|v| v.as_u64()).unwrap_or(0);
+            if now.saturating_sub(ts) <= 24 * 60 * 60 {
+                if let Some(arr) = parsed.get("app_ids").and_then(|v| v.as_array()) {
+                    for v in arr {
+                        if let Some(n) = v.as_u64() {
+                            allowlist.insert(n as u32);
+                        }
+                    }
+                    need_fetch = false;
+                }
+            }
+        }
+    }
+    if need_fetch {
+        if let Ok(client) = reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)).build() {
+            if let Ok(resp) = client.get("https://uco2list.iforgor.cc/api/games").send().await {
+                if let Ok(json) = resp.json::<serde_json::Value>().await {
+                    if let Some(arr) = json.as_array() {
+                        for item in arr {
+                            if let Some(n) = item.get("appId").and_then(|v| v.as_u64()) {
+                                allowlist.insert(n as u32);
+                            }
+                        }
+                        let stamped = serde_json::json!({
+                            "fetched_at": now,
+                            "app_ids": allowlist.iter().copied().collect::<Vec<_>>(),
+                        });
+                        let _ = fs::write(&allowlist_path, serde_json::to_string(&stamped).unwrap_or_default());
+                    }
+                }
+            }
+        }
+    }
+
+    let settings = load_settings(&app);
+    let installed_paths: std::collections::HashMap<u32, std::path::PathBuf> =
+        match resolve_steam_path(&settings.steam_path) {
+            Ok(root) => {
+                let scanner = SteamLibraryScanner::new(root);
+                let games = scanner.scan_installed_games();
+                games.into_iter().map(|g| (g.id, std::path::PathBuf::from(g.game_path))).collect()
+            }
+            Err(_) => std::collections::HashMap::new(),
+        };
+
+    let mut result: HashMap<u32, bool> = HashMap::new();
+    for app_id in app_ids {
+        let mut supported = allowlist.contains(&app_id);
+        if !supported {
+            if let Some(path) = installed_paths.get(&app_id) {
+                if !path.as_os_str().is_empty() {
+                    supported = crate::online::detect::GameInspector::inspect(path).is_ok();
+                }
+            }
+        }
+        result.insert(app_id, supported);
+    }
+    Ok(result)
+}

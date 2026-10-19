@@ -95,6 +95,22 @@ pub async fn get_installed_library_games(
         hero_image_urls = resolver.cached_hero_image_urls(app_ids.clone());
     }
 
+    // Resolve Denuvo flags from the persistent cache so Library cards can label them.
+    let denuvo_cache_path = cache_dir.join("denuvo_cache.json");
+    if let Ok(content) = std::fs::read_to_string(&denuvo_cache_path) {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(entries) = parsed.get("entries").and_then(|e| e.as_object()) {
+                for game in &mut games {
+                    if let Some(entry) = entries.get(&game.id.to_string()) {
+                        if let Some(flag) = entry.get("has_denuvo").and_then(|v| v.as_bool()) {
+                            game.has_denuvo = Some(flag);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     for game in &mut games {
         if let Some(name) = names.get(&game.id) {
             game.name = name.clone();

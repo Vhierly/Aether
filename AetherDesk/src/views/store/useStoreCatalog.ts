@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { enrichDenuvoFlags } from '../../hooks/useDenuvoEnrichment';
+import { enrichUco2Flags } from '../../hooks/useUco2Enrichment';
 import { useStoreSearch } from '../../hooks/useStoreSearch';
 import { preloadGameCovers } from '../../ui/GameCover';
 import { useTrendingStore } from './useTrendingStore';
@@ -77,6 +78,28 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
         );
       })
       .catch((error) => console.warn('Denuvo enrichment failed:', error));
+    return () => {
+      cancelled = true;
+    };
+    // pageKey is the complete enrichment request identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageKey]);
+
+  useEffect(() => {
+    if (pageGames.length === 0 || !activeQuery.trim()) return;
+    let cancelled = false;
+    enrichUco2Flags(pageGames)
+      .then((enriched) => {
+        if (cancelled) return;
+        const flags = new Map(enriched.map((game) => [String(game.appId), game.uco2_supported]));
+        setResults((current) =>
+          current.map((game) => {
+            const flag = flags.get(String(game.appId));
+            return flag === undefined ? game : { ...game, uco2_supported: flag };
+          })
+        );
+      })
+      .catch((error) => console.warn('UCO2 enrichment failed:', error));
     return () => {
       cancelled = true;
     };

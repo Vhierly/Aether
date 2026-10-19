@@ -26,6 +26,14 @@ pub struct InstalledSteamGame {
     pub manifest_present: bool,
     pub image_url: String,
     pub hero_image_url: String,
+    /// True when this installed game is supported by UCOnline2 (engine recognized
+    /// by `online::detect::GameInspector::inspect`). False for unrecognized /
+    /// missing game paths.
+    #[serde(rename = "uco2_supported")]
+    pub uco2_supported: bool,
+    /// Denuvo flag resolved from the persistent Denuvo cache (None = unknown).
+    #[serde(rename = "has_denuvo")]
+    pub has_denuvo: Option<bool>,
     /// Malformed `setManifestid` lines found in this game's Lua while scanning.
     ///
     /// A single bad line makes AetherDLL reject the **whole file**, so the game
@@ -201,6 +209,10 @@ impl SteamLibraryScanner {
                 // Real URLs come from IStoreBrowseService/GetItems.
                 image_url: String::new(),
                 hero_image_url: String::new(),
+                uco2_supported: manifest
+                    .map(|m| crate::online::detect::GameInspector::inspect(&m.game_path).is_ok())
+                    .unwrap_or(false),
+                has_denuvo: None,
                 lua_issues: lua.lua_issues,
             });
         }

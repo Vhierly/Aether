@@ -185,6 +185,7 @@ fn main() {
             commands::online::enable_online,
             commands::online::disable_online,
             commands::online::clean_online_conflicts,
+            commands::online::check_uco2_bulk,
             commands::library::get_installed_lua_manifest_rows,
             commands::library::get_lua_game_update_state,
             commands::library::set_lua_game_updates_enabled,

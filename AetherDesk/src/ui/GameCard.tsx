@@ -12,6 +12,8 @@ export interface GameCardModel {
   has_nsfw?: boolean;
   has_delisted?: boolean;
   installed?: boolean;
+  /** UCO2 support flag (library games). */
+  uco2_supported?: boolean;
   /**
    * Steam has an appmanifest for this game but is still writing its content:
    * the card shows `Installing` instead of `Installed`/`Available`.
@@ -154,6 +156,12 @@ const GameCardInner = <T extends GameCardModel>({
             {game.name}
           </h3>
           <span className="game-appid">App ID: {game.appId}</span>
+          {(game.has_denuvo || game.uco2_supported) && (
+            <div className="game-label-badges" style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+              {game.has_denuvo && <span className="badge-denuvo" title="Denuvo DRM detected">Denuvo</span>}
+              {game.uco2_supported && <span className="badge-uco2" title="Supported by UCOnline2">UCO2</span>}
+            </div>
+          )}
         </div>
         <div className="game-card-actions">
           {resolvedActions.map((action) => (
