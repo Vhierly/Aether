@@ -69,6 +69,12 @@ describe('store card tag', () => {
     expect(tag()?.textContent).toBe('DRM-Free');
   });
 
+  it('labels a plain Steam-DRM game as Steam DRM', () => {
+    render(<GameCard game={game({ drm_protection: 'Steam DRM' })} />);
+
+    expect(tag()?.textContent).toBe('Steam DRM');
+  });
+
   it('renders no tag when the game has no store metadata', () => {
     render(<GameCard game={game({})} />);
 

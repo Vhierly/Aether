@@ -176,7 +176,7 @@ const GameCardInner = <T extends GameCardModel>({
               const raw = game.drm_protection.trim();
               const d = raw.toLowerCase();
               if (d === 'none') drmLabel = 'DRM-Free';
-              else if (d === 'steam') drmLabel = 'Steam DRM';
+              else if (d === 'steam' || d === 'steam drm') drmLabel = 'Steam DRM';
               else if (d.includes('denuvo') || d.includes('enuvo') || d.includes('nuvo')) drmLabel = 'Denuvo';
               else if (d.includes('epic')) drmLabel = 'Epic';
               else if (d === 'ea' || d.includes('origin') || d.includes('ea app')) drmLabel = 'EA';
