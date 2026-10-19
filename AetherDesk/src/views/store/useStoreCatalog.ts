@@ -163,7 +163,7 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
 
 
   useEffect(() => {
-    if (pageGames.length === 0 || !activeQuery.trim()) return;
+    if (pageGames.length === 0) return;
     let cancelled = false;
     enrichCrackStatus(pageGames)
       .then((enriched) => {
