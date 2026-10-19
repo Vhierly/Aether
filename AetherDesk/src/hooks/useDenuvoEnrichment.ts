@@ -28,8 +28,8 @@ export const enrichDenuvoFlags = async <T extends DenuvoEnrichableGame>(games: T
     if (notice === 'None' || lower === 'none') {
       return { ...game, has_denuvo: false, drm_protection: 'None' };
     }
-    if (lower.includes('denuvo')) {
-      return { ...game, has_denuvo: true };
+    if (lower.includes('denuvo') || lower.includes('enuvo') || lower.includes('nuvo')) {
+      return { ...game, has_denuvo: true, drm_protection: 'Denuvo' };
     }
     if (notice && notice !== '') {
       return { ...game, has_denuvo: false, drm_protection: notice };

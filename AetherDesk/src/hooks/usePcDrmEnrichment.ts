@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 export interface PcDrmEnrichableGame {
   appId: string;
   name: string;
+  has_denuvo?: boolean;
   drm_protection?: string;
 }
 
@@ -14,7 +15,33 @@ export const enrichPcDrm = async <T extends PcDrmEnrichableGame>(games: T[]) => 
   const drmMap: Record<string, string> = await invoke('check_pc_drm_bulk', { appIds, names });
 
   return games.map((game) => {
-    const drm = drmMap[String(game.appId)];
-    return drm === undefined ? game : { ...game, drm_protection: drm };
+    const incoming = (drmMap[String(game.appId)] ?? '').trim();
+    if (!incoming) return game;
+
+    const existing = (game.drm_protection ?? '').trim();
+    const incomingIsDenuvo =
+      incoming.toLowerCase().includes('denuvo') ||
+      incoming.toLowerCase().includes('enuvo') ||
+      incoming.toLowerCase().includes('nuvo');
+    const existingIsDenuvo =
+      existing.toLowerCase().includes('denuvo') ||
+      existing.toLowerCase().includes('enuvo') ||
+      existing.toLowerCase().includes('nuvo');
+    const incomingIsNone = incoming.toLowerCase() === 'none';
+
+    let drm = game.drm_protection;
+    if (incomingIsDenuvo) {
+      drm = 'Denuvo';
+    } else if (incomingIsNone && existingIsDenuvo) {
+      drm = existing;
+    } else if (!existingIsDenuvo) {
+      drm = incoming;
+    }
+
+    return {
+      ...game,
+      drm_protection: drm,
+      has_denuvo: game.has_denuvo || incomingIsDenuvo,
+    };
   });
 };
