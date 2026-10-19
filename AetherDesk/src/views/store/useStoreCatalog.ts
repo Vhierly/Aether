@@ -120,7 +120,7 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
   }, [page, activeQuery, sortMode, genreFilter]);
 
   useEffect(() => {
-    if (pageGames.length === 0 || !activeQuery.trim()) return;
+    if (pageGames.length === 0) return;
     let cancelled = false;
     enrichDenuvoFlags(pageGames)
       .then((enriched) => {
@@ -141,7 +141,7 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
   }, [pageKey]);
 
   useEffect(() => {
-    if (pageGames.length === 0 || !activeQuery.trim()) return;
+    if (pageGames.length === 0) return;
     let cancelled = false;
     enrichUco2Flags(pageGames)
       .then((enriched) => {
@@ -168,11 +168,17 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     enrichCrackStatus(pageGames)
       .then((enriched) => {
         if (cancelled) return;
-        const map = new Map(enriched.map((game) => [String(game.appId), game.crack_status]));
+        const statusMap = new Map(enriched.map((game) => [String(game.appId), game.crack_status]));
+        const drmMap = new Map(enriched.map((game) => [String(game.appId), game.drm_protection]));
         setResults((current) =>
           current.map((game) => {
-            const status = map.get(String(game.appId));
-            return status === undefined ? game : { ...game, crack_status: status };
+            const status = statusMap.get(String(game.appId));
+            const drm = drmMap.get(String(game.appId));
+            return {
+              ...game,
+              ...(status === undefined ? {} : { crack_status: status }),
+              ...(drm === undefined ? {} : { drm_protection: drm }),
+            };
           })
         );
       })

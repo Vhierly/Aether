@@ -16,6 +16,8 @@ export interface GameCardModel {
   uco2_supported?: boolean;
   /** Crack status from isitcracked.com (cracked/uncracked/unreleased/...). */
   crack_status?: string;
+  /** DRM protection reported by isitcracked.com (e.g. Denuvo, Steam). */
+  drm_protection?: string;
   /**
    * Steam has an appmanifest for this game but is still writing its content:
    * the card shows `Installing` instead of `Installed`/`Available`.
@@ -158,7 +160,7 @@ const GameCardInner = <T extends GameCardModel>({
             {game.name}
           </h3>
           <span className="game-appid">App ID: {game.appId}</span>
-          {(game.has_denuvo || game.uco2_supported || game.crack_status) && (
+          {(game.has_denuvo || game.uco2_supported || game.crack_status || game.drm_protection) && (
             <div className="game-label-badges" style={{ display: 'flex', gap: 4, marginTop: 4 }}>
               {game.has_denuvo && <span className="badge-denuvo" title="Denuvo DRM detected">Denuvo</span>}
               {game.uco2_supported && <span className="badge-uco2" title="Supported by UCOnline2">UCO2</span>}
@@ -168,6 +170,14 @@ const GameCardInner = <T extends GameCardModel>({
                   title={`Crack status: ${game.crack_status}`}
                 >
                   {game.crack_status}
+                </span>
+              )}
+              {game.drm_protection && game.drm_protection.toLowerCase() !== 'none' && !game.drm_protection.toLowerCase().includes('denuvo') && (
+                <span
+                  className="badge-drm"
+                  title={`DRM: ${game.drm_protection}`}
+                >
+                  DRM
                 </span>
               )}
             </div>

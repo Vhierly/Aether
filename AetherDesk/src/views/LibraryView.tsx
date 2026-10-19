@@ -11,6 +11,9 @@ import { GameCard, type GameCardAction } from '../ui/GameCard';
 import { StatusAlert } from '../ui/StatusAlert';
 import { ArrowUpThickIcon, CloseIcon, HourglassIcon, PlayIcon, RefreshIcon, WrenchIcon } from '../ui/icons';
 import { useLibraryGames, InstalledGame } from '../hooks/useLibraryGames';
+import { enrichUco2Flags } from '../hooks/useUco2Enrichment';
+import { enrichDenuvoFlags } from '../hooks/useDenuvoEnrichment';
+import { enrichCrackStatus } from '../hooks/useCrackStatusEnrichment';
 import { useLibraryInstallFilter } from '../hooks/useLibraryInstallFilter';
 import { StatusType } from '../types/ui';
 import { requireSteamPath } from '../hooks/useSettings';
@@ -34,6 +37,7 @@ export const LibraryView = memo(function LibraryView({
 }: LibraryViewProps) {
   const { games, isLoading, isRefreshing, status, setStatus, loadInstalledGames, queryGameState } = useLibraryGames();
   const [searchQuery, setSearchQuery] = useState('');
+  const [enrichedGames, setEnrichedGames] = useState<InstalledGame[]>([]);
 
   const {
     filter,
@@ -44,7 +48,7 @@ export const LibraryView = memo(function LibraryView({
     countLabel,
     emptyMessage,
     filterButtonClass,
-  } = useLibraryInstallFilter(games, isLoading, searchQuery);
+  } = useLibraryInstallFilter(enrichedGames.length ? enrichedGames : games, isLoading, searchQuery);
 
   const [actionGame, setActionGame] = useState<InstalledGame | null>(null);
   const [infoGame, setInfoGame] = useState<InstalledGame | null>(null);
@@ -71,6 +75,30 @@ export const LibraryView = memo(function LibraryView({
       COVER_PRELOAD_WINDOW
     );
   }, [filteredGames]);
+
+
+  useEffect(() => {
+    if (games.length === 0) {
+      setEnrichedGames([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const uco2 = await enrichUco2Flags(games as any);
+        if (cancelled) return;
+        const denuvo = await enrichDenuvoFlags(uco2 as any);
+        if (cancelled) return;
+        const crack = await enrichCrackStatus(denuvo as any);
+        if (!cancelled) setEnrichedGames(crack as InstalledGame[]);
+      } catch (err) {
+        if (!cancelled) setEnrichedGames(games);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [games]);
 
   const handleCycleFilter = async () => {
     try {

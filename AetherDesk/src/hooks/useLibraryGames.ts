@@ -57,6 +57,8 @@ export interface InstalledGame {
   heroImageUrl?: string;
   uco2_supported?: boolean;
   has_denuvo?: boolean;
+  crack_status?: string;
+  drm_protection?: string;
   /** Malformed pins of this game's Lua (empty/absent for a healthy file). */
   luaIssues?: LuaManifestIssue[];
 }

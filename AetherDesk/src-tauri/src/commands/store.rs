@@ -58,7 +58,7 @@ pub async fn check_denuvo_bulk(
 pub async fn check_crack_status_bulk(
     app: tauri::AppHandle,
     app_ids: Vec<u32>,
-) -> Result<HashMap<u32, String>, String> {
+) -> Result<HashMap<u32, crate::application::store::CrackInfo>, String> {
     store::check_crack_status_bulk(&app, app_ids).await
 }
 

@@ -244,10 +244,16 @@ pub async fn check_denuvo_bulk(
     Ok(results)
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+pub struct CrackInfo {
+    pub status: String,
+    pub drm: Option<String>,
+}
+
 pub async fn check_crack_status_bulk(
     _app: &tauri::AppHandle,
     app_ids: Vec<u32>,
-) -> Result<HashMap<u32, String>, String> {
+ ) -> Result<HashMap<u32, CrackInfo>, String> {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -260,7 +266,7 @@ pub async fn check_crack_status_bulk(
     let _ = fs::create_dir_all(&cache_dir);
     let cache_path = cache_dir.join("crack_status_cache.json");
 
-    let mut result: HashMap<u32, String> = HashMap::new();
+    let mut result: HashMap<u32, CrackInfo> = HashMap::new();
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -279,8 +285,10 @@ pub async fn check_crack_status_bulk(
             if let Some(entry) = obj.get(&id.to_string()) {
                 let ts = entry.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
                 if now.saturating_sub(ts) <= CACHE_TTL {
-                    if let Some(status) = entry.get("status").and_then(|v| v.as_str()) {
-                        result.insert(*id, status.to_string());
+                    let status = entry.get("status").and_then(|v| v.as_str()).map(String::from);
+                    let drm = entry.get("drm").and_then(|v| v.as_str()).map(String::from);
+                    if let Some(st) = status {
+                        result.insert(*id, CrackInfo { status: st, drm });
                         continue;
                     }
                 }
@@ -300,7 +308,7 @@ pub async fn check_crack_status_bulk(
         .collect::<Vec<_>>()
         .join(",");
     let url = format!(
-        "{}/rest/v1/games?select=steam_appid,status&steam_appid=in.({})",
+        "{}/rest/v1/games?select=steam_appid,status,drm_protection&steam_appid=in.({})",
         SUPABASE_URL, ids_csv
     );
     let client = reqwest::Client::builder()
@@ -322,8 +330,9 @@ pub async fn check_crack_status_bulk(
                         .and_then(|v| v.as_str())
                         .and_then(|s| s.parse::<u32>().ok());
                     let status = item.get("status").and_then(|v| v.as_str());
+                    let drm = item.get("drm_protection").and_then(|v| v.as_str()).map(String::from);
                     if let (Some(id), Some(st)) = (appid, status) {
-                        result.insert(id, st.to_string());
+                        result.insert(id, CrackInfo { status: st.to_string(), drm });
                     }
                 }
             }
@@ -340,10 +349,10 @@ pub async fn check_crack_status_bulk(
     }
     let obj = entries.as_object_mut().unwrap();
     for id in &need_fetch {
-        if let Some(st) = result.get(id) {
+        if let Some(info) = result.get(id) {
             obj.insert(
                 id.to_string(),
-                serde_json::json!({"status": st, "ts": now}),
+                serde_json::json!({"status": info.status, "drm": info.drm, "ts": now}),
             );
         }
     }
