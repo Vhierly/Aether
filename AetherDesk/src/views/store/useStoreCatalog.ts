@@ -214,10 +214,14 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageKey]);
 
-  const refreshCatalog = () => {
-    setPage(1);
-    clear();
-    trending.reset();
+  // Background refresh must not yank the user back to page 1; the explicit
+  // Refresh button resets, the interval only tops up content.
+  const refreshCatalog = (reset = true) => {
+    if (reset) {
+      setPage(1);
+      clear();
+      trending.reset();
+    }
     void trending.loadNext(ITEMS_PER_PAGE * 2);
   };
 
@@ -229,7 +233,7 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     const id = window.setInterval(
       () => {
         if (document.visibilityState !== 'visible') return;
-        refreshCatalog();
+        refreshCatalog(false);
       },
       3 * 60 * 1000
     );

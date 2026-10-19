@@ -95,6 +95,29 @@ describe('useStoreCatalog', () => {
     expect(trendingReset).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps the current page when the background interval refreshes', async () => {
+    state.results = games(45);
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useStoreCatalog({ settingsReady: true, settingsRevision: 1 }));
+      act(() => result.current.setPage(3));
+      expect(result.current.page).toBe(3);
+
+      const clearCallsBefore = clear.mock.calls.length;
+      const resetCallsBefore = trendingReset.mock.calls.length;
+      await act(async () => {
+        vi.advanceTimersByTime(3 * 60 * 1000);
+      });
+
+      expect(result.current.page).toBe(3);
+      expect(clear.mock.calls.length).toBe(clearCallsBefore);
+      expect(trendingReset.mock.calls.length).toBe(resetCallsBefore);
+      expect(trendingLoad).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('enriches only visible search results with Denuvo flags', async () => {
     state.results = games(2);
     state.activeQuery = 'query';
