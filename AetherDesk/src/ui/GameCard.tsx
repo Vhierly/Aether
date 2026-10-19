@@ -172,15 +172,15 @@ const GameCardInner = <T extends GameCardModel>({
                   {game.crack_status}
                 </span>
               )}
-              {game.crack_status && !game.has_denuvo && game.drm_protection && game.drm_protection.toLowerCase() !== 'none' && game.drm_protection.toLowerCase() !== 'steam' && !game.drm_protection.toLowerCase().includes('denuvo') && (
+              {!game.has_denuvo && game.drm_protection && game.drm_protection.toLowerCase() !== 'none' && game.drm_protection.toLowerCase() !== 'steam' && !game.drm_protection.toLowerCase().includes('denuvo') && (
                 <span
                   className="badge-drm"
                   title={`DRM: ${game.drm_protection}`}
                 >
-                  DRM
+                  {game.drm_protection}
                 </span>
               )}
-              {game.crack_status && !game.has_denuvo && game.drm_protection && game.drm_protection.toLowerCase() === 'none' && (
+              {!game.has_denuvo && game.drm_protection && game.drm_protection.toLowerCase() === 'none' && (
                 <span
                   className="badge-drm-free"
                   title="No DRM detected"
