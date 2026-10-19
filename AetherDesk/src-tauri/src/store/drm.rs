@@ -14,6 +14,13 @@ const DRM_TIMEOUT_SECONDS: u64 = 4;
 const DRM_CONCURRENCY_LIMIT: usize = 3;
 const DENUVO_MARKER: &str = "denuvo";
 const CACHE_FILE_NAME: &str = "denuvo_cache.json";
+/// Bump this whenever the DRM detection logic or the cache shape changes.
+///
+/// The cache used to be keyed on `app.package_info().version`, but tauri.conf.json
+/// keeps that at 1.4.3 across every release - so the key never changed and entries
+/// written by older builds (which derived `has_denuvo` differently) were served
+/// forever, showing stale/empty DRM for games that do have Denuvo.
+pub const DRM_CACHE_SCHEMA: &str = "2";
 /// Denuvo status changes rarely (patches removing it months after release),
 /// so a 30-day TTL keeps the cache trustworthy while making every app id a
 /// network call at most once a month.
@@ -21,10 +28,10 @@ const CACHE_TTL_SECONDS: u64 = 30 * 24 * 60 * 60;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct DenuvoCacheFile {
-    /// Same self-describing invalidation scheme as the store search cache:
-    /// entries written by a different AetherDesk build are ignored, no stamp file.
+    /// Identifies the schema/logic that wrote this file. Entries written by a
+    /// different schema are ignored rather than trusted.
     #[serde(default)]
-    app_version: String,
+    cache_key: String,
     entries: HashMap<u32, DenuvoCacheEntry>,
 }
 
@@ -53,17 +60,17 @@ struct DenuvoCacheEntry {
 pub struct DrmDetector {
     client: reqwest::Client,
     cache_path: PathBuf,
-    /// Version of the running build (from `tauri.conf.json`), for
-    /// self-describing cache invalidation.
-    app_version: String,
+    /// Schema version of the running build, for self-describing cache
+    /// invalidation.
+    cache_key: String,
 }
 
 impl DrmDetector {
-    pub fn new(cache_dir: &Path, app_version: String) -> Self {
+    pub fn new(cache_dir: &Path, cache_key: String) -> Self {
         Self {
             client: http::shared_client(DRM_TIMEOUT_SECONDS),
             cache_path: cache_dir.join(CACHE_FILE_NAME),
-            app_version,
+            cache_key,
         }
     }
 
@@ -172,7 +179,7 @@ impl DrmDetector {
             return DenuvoCacheFile::default();
         };
         let mut cache = serde_json::from_str::<DenuvoCacheFile>(&content).unwrap_or_default();
-        if cache.app_version != self.app_version {
+        if cache.cache_key != self.cache_key {
             cache.entries.clear();
         }
         cache
@@ -185,7 +192,7 @@ impl DrmDetector {
         }
         let temp_path = self.cache_path.with_extension("tmp");
         let stamped = DenuvoCacheFile {
-            app_version: self.app_version.clone(),
+            cache_key: self.cache_key.clone(),
             entries: cache.entries.clone(),
         };
         let content = serde_json::to_string(&stamped)

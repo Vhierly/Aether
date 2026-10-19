@@ -237,7 +237,9 @@ pub async fn check_denuvo_bulk(
     let app_version = app.package_info().version.to_string();
     let settings = load_settings(app);
     let info_cache_version = cache_version_with_currency(&app_version, &settings.store_currency);
-    let results = DrmDetector::new(&cache_dir, app_version)
+    // Keyed on the DRM schema, NOT the package version: tauri.conf.json stays at
+    // 1.4.3 across releases, so a version key would never invalidate stale entries.
+    let results = DrmDetector::new(&cache_dir, crate::store::drm::DRM_CACHE_SCHEMA.to_string())
         .detect_many(app_ids)
         .await?;
     GameInfoCache::new(&cache_dir, info_cache_version).merge_denuvo_flags(&results);
