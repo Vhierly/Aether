@@ -36,6 +36,9 @@ int main(int argc, char** argv) {
         {"ipcspec", IpcSpecParseTest},
         {"jsonwriter", JsonWriterTest},
         {"manifest_contract", ManifestContractTest},
+        {"acfowner", AcfOwnerTest},
+        {"steamuicss", SteamUiCssTest},
+        {"steamuipatch", SteamUiPatchTest},
     };
     try {
         if (argc == 1) {
