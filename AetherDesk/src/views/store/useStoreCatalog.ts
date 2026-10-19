@@ -266,6 +266,7 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     setPage,
     pageGames,
     totalPages,
+    resultsLength: results.length,
     isLoading,
     isTrendingLoading: trending.isLoading,
     hasSearched,

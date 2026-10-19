@@ -121,6 +121,7 @@ export const StoreView = memo(function StoreView({
         activeQuery={catalog.activeQuery}
         page={catalog.page}
         totalPages={catalog.totalPages}
+        resultsLength={catalog.resultsLength}
         useAlternativeGameCards={useAlternativeGameCards}
         alternativeCardsOpacity={alternativeCardsOpacity}
         alternativeCardsFade={alternativeCardsFade}
