@@ -5,6 +5,7 @@ import { SettingsView, type SettingsGuard } from '../views/SettingsView';
 import { AetherView } from '../views/AetherView';
 import { LibraryView } from '../views/LibraryView';
 import { HomeView } from '../views/HomeView';
+import { BackupView } from '../views/BackupView';
 import { LogView } from '../views/LogView';
 import { DllStatusInfo } from '../types/ui';
 
@@ -69,6 +70,14 @@ export const MainContent = memo(function MainContent({
   dll,
 }: MainContentProps) {
   const renderActiveTransientView = () => {
+    if (activeTab === 'backup') {
+      return (
+        <main className="main-content">
+          <BackupView />
+        </main>
+      );
+    }
+
     if (activeTab === 'home') {
       return (
         <main className="main-content">

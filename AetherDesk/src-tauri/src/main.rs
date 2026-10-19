@@ -148,6 +148,7 @@ fn main() {
             commands::local::install_local_game,
             commands::local::install_bulk_local,
             commands::local::list_lua_history,
+            commands::backup::list_backup_games,
             commands::antivirus::get_antivirus_exclusion_done,
             commands::antivirus::acknowledge_antivirus_exclusion,
             commands::antivirus::apply_antivirus_exclusion,

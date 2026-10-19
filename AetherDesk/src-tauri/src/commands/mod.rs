@@ -41,6 +41,7 @@
 pub mod aether_desk;
 pub mod aether_dll;
 pub mod antivirus;
+pub mod backup;
 pub mod crack;
 pub mod custom_css;
 pub mod fs;
