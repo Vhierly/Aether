@@ -168,10 +168,11 @@ const GameCardInner = <T extends GameCardModel>({
               const label = cs === 'hypervisor' ? 'HV Crack' : cs.charAt(0).toUpperCase() + cs.slice(1);
               parts.push(label);
             }
-            let drmLabel: string;
+            // `drm_protection` is optional: undefined means "not checked", which
+            // must NOT render as DRM-Free (only an explicit "None" does).
+            let drmLabel: string | undefined;
             if (game.has_denuvo) drmLabel = 'Denuvo';
-            else if (!game.drm_protection) drmLabel = 'DRM-Free';
-            else {
+            else if (game.drm_protection) {
               const raw = game.drm_protection.trim();
               const d = raw.toLowerCase();
               if (d === 'none') drmLabel = 'DRM-Free';

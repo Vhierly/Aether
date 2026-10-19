@@ -29,3 +29,49 @@ describe('GameCard install badge', () => {
     expect(screen.queryByText('Installed')).toBeNull();
   });
 });
+
+describe('store card tag', () => {
+  const tag = () => document.querySelector('.badge-store-tag');
+
+  it('joins UCO2, crack status and DRM into one pipe-separated tag', () => {
+    render(<GameCard game={game({ uco2_supported: true, crack_status: 'cracked', has_denuvo: true })} />);
+
+    expect(tag()?.textContent).toBe('UCO2 | Cracked | Denuvo');
+  });
+
+  it('keeps Denuvo when a later source reports DRM-Free', () => {
+    render(<GameCard game={game({ has_denuvo: true, drm_protection: 'None' })} />);
+
+    expect(tag()?.textContent).toBe('Denuvo');
+  });
+
+  it('normalizes misspelled Denuvo', () => {
+    render(<GameCard game={game({ drm_protection: 'Enuvo' })} />);
+
+    expect(tag()?.textContent).toBe('Denuvo');
+  });
+
+  it('labels hypervisor cracks distinctly', () => {
+    render(<GameCard game={game({ crack_status: 'hypervisor' })} />);
+
+    expect(tag()?.textContent).toBe('HV Crack');
+  });
+
+  it('shortens noisy DRM labels to DRM', () => {
+    render(<GameCard game={game({ drm_protection: 'Offline crack team ==' })} />);
+
+    expect(tag()?.textContent).toBe('DRM');
+  });
+
+  it('reports DRM-Free for a plain None', () => {
+    render(<GameCard game={game({ drm_protection: 'None' })} />);
+
+    expect(tag()?.textContent).toBe('DRM-Free');
+  });
+
+  it('renders no tag when the game has no store metadata', () => {
+    render(<GameCard game={game({})} />);
+
+    expect(tag()).toBeNull();
+  });
+});
