@@ -16,6 +16,9 @@ export const enrichDenuvoFlags = async <T extends DenuvoEnrichableGame>(games: T
     const notice = denuvoMap[String(game.appId)];
     if (notice === undefined) return game;
     const lower = notice.toLowerCase();
+    if (notice.includes('team') || notice.includes('offline') || notice.includes('ffline') || notice.includes('=') || notice.length > 30) {
+      return game;
+    }
     if (notice === 'None' || lower === 'none') {
       return { ...game, has_denuvo: false, drm_protection: 'None' };
     }

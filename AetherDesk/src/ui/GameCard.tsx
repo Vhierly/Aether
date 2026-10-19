@@ -177,7 +177,7 @@ const GameCardInner = <T extends GameCardModel>({
                   className="badge-drm"
                   title={`DRM: ${game.drm_protection}`}
                 >
-                  {game.drm_protection}
+                  {/team|offline|ffline|=/.test(game.drm_protection) || game.drm_protection.length > 30 ? 'DRM' : game.drm_protection}
                 </span>
               )}
               {!game.has_denuvo && game.drm_protection && game.drm_protection.toLowerCase() === 'none' && (

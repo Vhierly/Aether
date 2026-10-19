@@ -505,6 +505,11 @@ pub async fn check_pc_drm_bulk(
             continue;
         };
 
+        // Sanitize: only accept clean DRM names; skip messy values.
+        let lower = drm.to_lowercase();
+        if lower.contains("team") || lower.contains("offline") || lower.contains("ffline") || lower.contains("=") || drm.len() > 30 {
+            continue;
+        }
         result.insert(*id, drm);
     }
 
