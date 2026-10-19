@@ -47,7 +47,8 @@ impl GameInfoService {
         let needs_store_items =
             !GameInfoCache::is_fresh(info.store_items_updated_at_unix, GAME_INFO_TTL_SECONDS);
         let needs_appdetails =
-            !GameInfoCache::is_fresh(info.appdetails_updated_at_unix, GAME_INFO_TTL_SECONDS);
+            !GameInfoCache::is_fresh(info.appdetails_updated_at_unix, GAME_INFO_TTL_SECONDS)
+            || info.name.as_ref().map(|n| n.trim().is_empty()).unwrap_or(true);
         let needs_hubcap =
             !GameInfoCache::is_fresh(info.hubcap_updated_at_unix, HUBCAP_INFO_TTL_SECONDS);
 
@@ -187,11 +188,81 @@ impl GameInfoService {
         let settings = load_settings(&self.app);
         let country_code = steam_country_code_for_currency(&settings.store_currency);
         let client = http::shared_client(APPDETAILS_TIMEOUT_SECONDS);
-        api::fetch_app_details_for_country(&client, app_id, Some(country_code))
-            .await
-            .ok()
-            .and_then(|envelope| envelope.data)
+
+        // Try country-specific first.
+        if let Ok(envelope) = api::fetch_app_details_for_country(&client, app_id, Some(country_code)).await {
+            if let Some(data) = envelope.data {
+                if !data.is_null() && data.as_object().map(|o| !o.is_empty()).unwrap_or(false) {
+                    return Some(data);
+                }
+            }
+        }
+
+        // Fallback: global (no country) — avoids region-locked N/A.
+        if let Ok(envelope) = api::fetch_app_details_for_country(&client, app_id, None).await {
+            if let Some(data) = envelope.data {
+                if !data.is_null() && data.as_object().map(|o| !o.is_empty()).unwrap_or(false) {
+                    return Some(data);
+                }
+            }
+        }
+
+        // Last resort: scrape the Steam store page HTML for the JSON-LD block.
+        self.scrape_store_page(&client, app_id).await
     }
+
+    async fn scrape_store_page(&self, client: &reqwest::Client, app_id: u32) -> Option<serde_json::Value> {
+        let url = format!("https://store.steampowered.com/app/{}/", app_id);
+        let response = client.get(&url).send().await.ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let html = response.text().await.ok()?;
+        // Find application/ld+json block.
+        let marker = r#"<script type="application/ld+json">"#;
+        let start = html.find(marker)?;
+        let rest = &html[start + marker.len()..];
+        let end = rest.find("</script>")?;
+        let json_str = rest[..end].trim();
+        let value: serde_json::Value = serde_json::from_str(json_str).ok()?;
+        // Normalize into the appdetails-ish shape merge_appdetails_value expects.
+        let mut obj = serde_json::Map::new();
+        if let Some(name) = value.get("name").and_then(|v| v.as_str()) {
+            obj.insert("name".to_string(), serde_json::Value::String(name.to_string()));
+        }
+        if let Some(desc) = value.get("description").and_then(|v| v.as_str()) {
+            obj.insert("short_description".to_string(), serde_json::Value::String(desc.to_string()));
+        }
+        if let Some(img) = value.get("image").and_then(|v| v.as_str()) {
+            obj.insert("header_image".to_string(), serde_json::Value::String(img.to_string()));
+            obj.insert("capsule_image".to_string(), serde_json::Value::String(img.to_string()));
+        }
+        if let Some(date) = value.get("datePublished").and_then(|v| v.as_str()) {
+            obj.insert(
+                "release_date".to_string(),
+                serde_json::json!({ "date": date, "coming_soon": false }),
+            );
+        }
+        if let Some(genre) = value.get("genre") {
+            let genres: Vec<String> = match genre {
+                serde_json::Value::String(s) => vec![s.clone()],
+                serde_json::Value::Array(arr) => arr.iter().filter_map(|v| v.as_str().map(String::from)).collect(),
+                _ => vec![],
+            };
+            obj.insert(
+                "genres".to_string(),
+                serde_json::Value::Array(genres.into_iter().map(|g| serde_json::json!({"description": g})).collect()),
+            );
+        }
+        if let Some(dev) = value.get("author").and_then(|v| v.get("name")).and_then(|v| v.as_str()) {
+            obj.insert("developers".to_string(), serde_json::json!([dev]));
+        }
+        if let Some(pub_) = value.get("publisher").and_then(|v| v.get("name")).and_then(|v| v.as_str()) {
+            obj.insert("publishers".to_string(), serde_json::json!([pub_]));
+        }
+        Some(serde_json::Value::Object(obj))
+    }
+
 }
 
 fn apply_store_items_meta(info: &mut GameInfo, meta: &store_items::StoreItemMeta) {
