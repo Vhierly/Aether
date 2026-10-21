@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { toErrorMessage } from '../util/errors';
 
 export interface StoreGameResult {
   id: number;
@@ -7,11 +8,6 @@ export interface StoreGameResult {
   appId: string;
   has_manifest: boolean;
   has_denuvo: boolean;
-  uco2_supported?: boolean;
-  crack_status?: string;
-  drm_protection?: string;
-  genres?: string[];
-  release_date_unix?: number;
   has_nsfw?: boolean;
   has_delisted?: boolean;
   imageUrl?: string;
@@ -28,6 +24,7 @@ export const useStoreSearch = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [activeQuery, setActiveQuery] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const requestId = useRef(0);
 
   const clear = () => {
@@ -35,12 +32,13 @@ export const useStoreSearch = () => {
     setResults([]);
     setHasSearched(false);
     setActiveQuery('');
+    setError(null);
   };
 
   const applyResults = (query: string, games: StoreGameResult[]) => {
     // Denuvo enrichment is intentionally NOT done here: it runs per visible
     // page in StoreView, so a search costs at most ~20 rate-limited Steam
-    // calls instead of one call per result (which used to trip the limit).
+    // calls instead of one call per result.
     setResults(games || []);
     setActiveQuery(query);
   };
@@ -67,6 +65,8 @@ export const useStoreSearch = () => {
     requestId.current = currentRequest;
     setIsLoading(true);
     setHasSearched(true);
+    // A new attempt starts without the failure message of the previous one.
+    setError(null);
 
     try {
       const cached: CachedStoreSearchResponse = await invoke('get_cached_store_search', { query });
@@ -92,7 +92,12 @@ export const useStoreSearch = () => {
     } catch (err) {
       if (requestId.current !== currentRequest) return;
       setIsLoading(false);
-      throw err;
+      // The failed query leaves nothing behind: the cards of the previous
+      // query would contradict the failure reported for this one. The error
+      // is set after the reset, which clears it.
+      clear();
+      setError(toErrorMessage(err));
+      return;
     }
   };
 
@@ -102,6 +107,7 @@ export const useStoreSearch = () => {
     isLoading,
     hasSearched,
     activeQuery,
+    error,
     search,
     clear,
   };
