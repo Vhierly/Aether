@@ -7,6 +7,10 @@
 //! The file is textual VDF; Steam rewrites it on exit, so our edits survive
 //! while Steam is closed or until it rewrites them itself.
 //! The functions here work on the text, preserving everything else in the file.
+//! A write is committed through the shared atomic writer (a sibling temp file
+//! and a rename), because the file holds every Steam client setting: an
+//! interrupted in-place write would lose all of them, not just the launch
+//! options being changed.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -55,11 +59,22 @@ pub fn set_launch_options(steam_path: &Path, app_id: u32, options: &str) -> Resu
     let updated = set_app_launch_options(&content, app_id, options)
         .ok_or_else(|| "Failed to update localconfig.vdf (unexpected structure).".to_string())?;
 
-    // Back up before writing.
+    commit_localconfig(&path, &updated)
+}
+
+/// Publish `contents` to `path` through the shared atomic writer.
+///
+/// Steam rewrites this file on exit, so the copy to `.bak` is informational: a
+/// failed backup must never block the update. The rename inside
+/// `core::state_io::write_atomic` is the only step that replaces the live
+/// file, so a reader (Steam included) sees either the old text or the new
+/// one, never a prefix.
+pub(crate) fn commit_localconfig(path: &Path, contents: &str) -> Result<(), String> {
+    // Back up before the commit, best effort.
     let backup = path.with_extension("vdf.bak");
-    let _ = fs::copy(&path, &backup);
-    fs::write(&path, updated).map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
-    Ok(())
+    let _ = fs::copy(path, &backup);
+
+    crate::core::state_io::write_atomic(path, contents.as_bytes())
 }
 
 /// True when the LaunchOptions contain the token (e.g. "-aetheronline").
