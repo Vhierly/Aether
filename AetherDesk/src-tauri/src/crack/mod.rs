@@ -39,6 +39,12 @@ pub struct CrackReport {
     pub replaced: usize,
     /// Relative paths of all applied files.
     pub files: Vec<String>,
+    /// Sources that produced no applied file, in the order they were tried.
+    ///
+    /// Kept apart from `files` because a failure is not an applied path: the
+    /// command layer turns a run with only failures into an error instead of a
+    /// success message listing nothing.
+    pub failures: Vec<String>,
 }
 
 /// Launch the VN patch installer with `game_root` as its working directory and
@@ -143,7 +149,7 @@ fn apply_sources_in_staging(
             }
 
             // When `vn_patch_mode` is ON and the source file is an executable (.exe),
-            // we stage it as an archive by copying it to a temporary `.exe.zip`
+            // it is staged as an archive by copying it to a temporary `.exe.zip`
             // file in the staging directory's parent folder, so archive extractors
             // (zip / 7z / rar) open and extract its contents automatically.
             let is_vn_exe = vn_patch_mode
@@ -169,23 +175,33 @@ fn apply_sources_in_staging(
                 if stage_res.is_err() {
                     crate::desk_log_info!("crack", "Opening VN .exe patch as archive failed (not a self-extracting archive). Launching installer executable: {}", source_path.display());
                     // If opening the `.exe` as an archive fails (it is not a self-extracting
-                    // archive), we do NOT copy the `.exe` into the game folder. Instead,
-                    // as requested, we simply launch the executable patcher with current
-                    // directory set to `game_root`.
-                    #[cfg(target_os = "windows")]
-                    {
-                        let _ = std::process::Command::new(&source_path)
-                            .current_dir(game_root)
-                            .spawn();
+                    // archive), the `.exe` is NOT copied into the game folder. Instead the
+                    // executable patcher is launched with the current directory set to
+                    // `game_root`. Only a successful exit counts as applied; a failed
+                    // launch is reported and the remaining sources still run.
+                    let name = source_path
+                        .file_name()
+                        .map(|n| n.to_string_lossy())
+                        .unwrap_or_default();
+                    match launch_patch_installer(&source_path, game_root) {
+                        Ok(()) => {
+                            report.applied += 1;
+                            report
+                                .files
+                                .push(format!("(Launched patch installer: {name})"));
+                        }
+                        Err(err) => {
+                            crate::desk_log_error!(
+                                "crack",
+                                "Launching VN patch installer {} failed: {}",
+                                source_path.display(),
+                                err
+                            );
+                            report
+                                .failures
+                                .push(format!("Patch installer failed: {name}: {err}"));
+                        }
                     }
-                    report.applied += 1;
-                    report.files.push(format!(
-                        "(Launched patch installer: {})",
-                        source_path
-                            .file_name()
-                            .map(|n| n.to_string_lossy())
-                            .unwrap_or_default()
-                    ));
                     continue;
                 }
             } else {
@@ -237,6 +253,9 @@ pub fn reapply_saved_crack(
         applied: sub.applied,
         replaced: sub.replaced,
         files: sub.files,
+        // A re-apply copies stored files straight to their paths, so it has no
+        // source that can fail without applying anything.
+        failures: Vec::new(),
     })
 }
 
