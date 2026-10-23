@@ -163,9 +163,54 @@ impl GameBackup {
         // the original in the backup (the previous one goes to history/).
         self.store_original(app_id, lua_content.as_bytes())?;
 
+        self.write_manifest_files(manifest_files)
+    }
+
+    /// Persist a Desk-modified Lua version and any bundled Steam `.manifest`
+    /// files for a game.
+    ///
+    /// The original (`lua/<app_id>.lua`) keeps the pristine source version: the
+    /// modified one is archived in `history/` only. Replacing the original here
+    /// would put the modified file back where a restore or an uninstall
+    /// expects the pristine one.
+    pub fn backup_lua_variant(
+        &self,
+        app_id: u32,
+        lua_content: &str,
+        manifest_files: &[ManifestPackageFile],
+    ) -> Result<(), String> {
+        self.store_history_version(app_id, lua_content.as_bytes())?;
+
+        self.write_manifest_files(manifest_files)
+    }
+
+    /// Writes the bundled `.manifest` files into the game's lua backup.
+    fn write_manifest_files(&self, manifest_files: &[ManifestPackageFile]) -> Result<(), String> {
         for manifest in manifest_files {
             let manifest_path = self.lua_dir().join(&manifest.file_name);
             write_atomic(&manifest_path, &manifest.bytes)?;
+        }
+
+        Ok(())
+    }
+
+    /// Persists the Lua of an install: `pristine_lua` is the content the
+    /// install published, `variant_lua` the content the caller rewrote
+    /// afterwards (the update policy flipping the updates flag).
+    ///
+    /// The original keeps the pristine content and the manifests belong to it;
+    /// the rewritten content is a variant and is archived in `history/`.
+    pub fn backup_installed_lua(
+        &self,
+        app_id: u32,
+        pristine_lua: &str,
+        variant_lua: &str,
+        manifest_files: &[ManifestPackageFile],
+    ) -> Result<(), String> {
+        self.backup_lua_artifacts(app_id, pristine_lua, manifest_files)?;
+
+        if variant_lua != pristine_lua {
+            self.backup_lua_variant(app_id, variant_lua, &[])?;
         }
 
         Ok(())

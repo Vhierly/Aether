@@ -15,8 +15,8 @@ use crate::steam::compat::SteamCompat;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct SpecificInstallPolicy {
-    /// Retains the historical Hubcap-specific behavior while allowing Ryuu and
-    /// LuaTools switches to clear partial Steam downloads before publication.
+    /// When false, partial Steam downloads are left in place (Hubcap behavior);
+    /// when true, they are cleared before publication (Ryuu and LuaTools).
     pub clear_residual_download: bool,
 }
 
@@ -179,19 +179,6 @@ fn apply_update_policy_and_backup(
     lua_fallback: &str,
     manifests: &[ManifestPackageFile],
 ) -> Result<(), String> {
-    apply_default_update_policy(app, app_id, steam_path)?;
-    let installed_lua = SteamCompat::new(steam_path)
-        .read_lua_config(app_id)
-        .unwrap_or_else(|_| lua_fallback.to_string());
-    GameBackup::for_app(app_id)?.backup_lua_artifacts(app_id, &installed_lua, manifests)?;
-    Ok(())
-}
-
-fn apply_default_update_policy(
-    app: &tauri::AppHandle,
-    app_id: u32,
-    steam_path: &str,
-) -> Result<(), String> {
     let settings = load_settings(app);
     crate::desk_log_debug!(
         "store",
@@ -199,12 +186,42 @@ fn apply_default_update_policy(
         app_id,
         settings.download_games_with_updates_on
     );
-    if settings.download_games_with_updates_on {
+    let backup = GameBackup::for_app(app_id)?;
+    apply_update_policy_and_backup_with(
+        &backup,
+        settings.download_games_with_updates_on,
+        app_id,
+        steam_path,
+        lua_fallback,
+        manifests,
+    )
+}
+
+/// The install-time policy and backup with the update flag injected, so the
+/// ordering can be exercised without a Tauri handle: the installed Lua is
+/// read before the policy rewrites the pins and again after it.
+pub(crate) fn apply_update_policy_and_backup_with(
+    backup: &GameBackup,
+    updates_on: bool,
+    app_id: u32,
+    steam_path: &str,
+    lua_fallback: &str,
+    manifests: &[ManifestPackageFile],
+) -> Result<(), String> {
+    // The pristine content is the one the install published: read it before
+    // the policy rewrites the pins.
+    let before = SteamCompat::new(steam_path)
+        .read_lua_config(app_id)
+        .unwrap_or_else(|_| lua_fallback.to_string());
+    if updates_on {
         LuaManifestPins::new(steam_path.to_string(), app_id)
             .set_updates_enabled(true)
             .map(|_| ())?;
     }
-    Ok(())
+    let after = SteamCompat::new(steam_path)
+        .read_lua_config(app_id)
+        .unwrap_or_else(|_| lua_fallback.to_string());
+    backup.backup_installed_lua(app_id, &before, &after, manifests)
 }
 
 fn notify_store_change(app: &tauri::AppHandle, app_id: u32) {

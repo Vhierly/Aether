@@ -24,6 +24,7 @@
 //! without benefit; the dual convention is now documented as it really is.
 
 pub mod aliases_tests;
+pub mod backup_original_tests;
 pub mod bridge_contract_tests;
 pub mod crack_locate_tests;
 pub mod custom_css_tests;
