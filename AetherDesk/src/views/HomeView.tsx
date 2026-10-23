@@ -259,6 +259,7 @@ export const HomeView = memo(function HomeView() {
             emptyText="No Lua games found."
             activeIndex={activeResultIndex}
             maxVisible={MAX_VISIBLE_RESULTS}
+            resetKey={query}
             onHoverIndex={setActiveResultIndex}
             onSelect={(item) => {
               const game = filteredGames.find((candidate) => candidate.id === item.id);

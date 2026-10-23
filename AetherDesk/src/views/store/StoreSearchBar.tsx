@@ -97,6 +97,7 @@ export function StoreSearchBar({ isLoading, onSearch, onClear }: StoreSearchBarP
           emptyText="No Steam suggestions."
           statusText={isSuggestLoading ? 'Searching Steam…' : undefined}
           activeIndex={activeSuggestIndex}
+          resetKey={query}
           onHoverIndex={setActiveSuggestIndex}
           onSelect={(item) => selectSuggestion(item.name)}
         />
