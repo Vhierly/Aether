@@ -13,11 +13,13 @@ const ITEMS_PER_PAGE = 20;
 type SortMode = 'newest' | 'trending' | 'name';
 
 interface Params {
+  /** Hidden views stay mounted; only the visible tab may start network work. */
+  active: boolean;
   settingsRevision: number;
   settingsReady: boolean;
 }
 
-export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
+export function useStoreCatalog({ active, settingsRevision, settingsReady }: Params) {
   const [page, setPage] = useState(1);
   const [sortMode, setSortMode] = useState<SortMode>('newest');
   const [genreFilter, setGenreFilter] = useState<string>('');
@@ -29,7 +31,7 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
   const { results, setResults, isLoading, hasSearched, activeQuery, search, clear } = storeSearch;
 
   useEffect(() => {
-    if (!settingsReady || observedSettingsRevision.current === settingsRevision) return;
+    if (!active || !settingsReady || observedSettingsRevision.current === settingsRevision) return;
     observedSettingsRevision.current = settingsRevision;
     setPage(1);
     trending.reset();
@@ -39,12 +41,12 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     }
     clear();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settingsRevision, settingsReady]);
+  }, [active, settingsRevision, settingsReady]);
 
   // Enrich genres for any result that doesn't have them yet.
   useEffect(() => {
     const missing = results.filter((g) => !g.genres);
-    if (missing.length === 0) return;
+    if (!active || missing.length === 0) return;
     let cancelled = false;
     enrichGenres(missing)
       .then((enriched) => {
@@ -62,7 +64,7 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results.length]);
+  }, [active, results.length]);
 
   const prevStoreFrontFilter = useRef(storeFrontFilter);
   // Reset trending session when the storefront filter changes.
@@ -98,28 +100,29 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
   const pageKey = pageGames.map((game) => game.appId).join(',');
 
   useEffect(() => {
-    if (pageGames.length === 0 || document.visibilityState !== 'visible') return;
+    if (!active || pageGames.length === 0 || document.visibilityState !== 'visible') return;
     preloadGameCovers(
       pageGames.map((game) => ({ appId: game.appId, imageUrl: game.imageUrl })),
       pageGames.length
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageKey]);
+  }, [active, pageKey]);
 
   useEffect(() => {
-    if (!settingsReady || activeQuery.trim()) return;
+    if (!active || !settingsReady || activeQuery.trim()) return;
     if (results.length < (page + 1) * ITEMS_PER_PAGE) {
       void trending.loadNext(ITEMS_PER_PAGE * 2);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, results.length, activeQuery, settingsReady]);
+  }, [active, page, results.length, activeQuery, settingsReady]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 });
   }, [page, activeQuery, sortMode, genreFilter]);
 
   useEffect(() => {
-    if (pageGames.length === 0) return;
+    if (!active || pageGames.length === 0) return;
+)
     let cancelled = false;
     enrichDenuvoFlags(pageGames)
       .then((enriched) => {
@@ -143,10 +146,10 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageKey]);
+  }, [active, pageKey]);
 
   useEffect(() => {
-    if (pageGames.length === 0) return;
+    if (!active || pageGames.length === 0) return;
     let cancelled = false;
     enrichUco2Flags(pageGames)
       .then((enriched) => {
@@ -167,7 +170,7 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
   }, [pageKey]);
 
   useEffect(() => {
-    if (pageGames.length === 0) return;
+    if (!active || pageGames.length === 0) return;
     let cancelled = false;
     enrichCrackStatus(pageGames)
       .then((enriched) => {
@@ -194,7 +197,7 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
   }, [pageKey]);
 
   useEffect(() => {
-    if (pageGames.length === 0) return;
+    if (!active || pageGames.length === 0) return;
     let cancelled = false;
     enrichPcDrm(pageGames)
       .then((enriched) => {
@@ -229,7 +232,7 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
   // appear without a manual reload. Only while the store is in browse mode
   // (no active search) and the tab is visible.
   useEffect(() => {
-    if (activeQuery.trim()) return;
+    if (!active || activeQuery.trim()) return;
     const id = window.setInterval(
       () => {
         if (document.visibilityState !== 'visible') return;
@@ -239,7 +242,7 @@ export function useStoreCatalog({ settingsRevision, settingsReady }: Params) {
     );
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeQuery, settingsReady]);
+  }, [active, activeQuery, settingsReady]);
 
   const runSearch = async (query: string) => {
     setPage(1);
