@@ -88,6 +88,43 @@ beforeEach(() => {
   });
 });
 
+const disabledStatus = { state: 'disabled' as const, record: null };
+
+describe('OnlinePanel enable warnings', () => {
+  it('reports a presence warning without turning a successful enable into an error', async () => {
+    const user = userEvent.setup();
+    invokeMock.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case 'plan_online':
+          return plan;
+        case 'get_online_status':
+          return disabledStatus;
+        case 'get_online_preferences':
+          return null;
+        case 'enable_online':
+          return {
+            success: true,
+            message: 'Online enabled.',
+            record: enabledStatus.record,
+            confirmationRequired: false,
+            warning: 'Online files deployed, presence configuration incomplete: denied',
+          };
+        default:
+          throw new Error(`unexpected command ${cmd}`);
+      }
+    });
+    render(<OnlinePanel game={game} onClose={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Enable' }));
+
+    const warning = await screen.findByText(/presence configuration incomplete/);
+    // The result sits above the scrollable body so it is always visible.
+    expect(warning.closest('.op-body')).toBeNull();
+    // The deployment succeeded: the panel reports it and adds the warning.
+    expect(screen.getByText(/Online enabled\./)).toBeInTheDocument();
+  });
+});
+
 describe('OnlinePanel journal-less disable', () => {
   it('confirms before cleaning and reports the verify-integrity warning', async () => {
     const user = userEvent.setup();
