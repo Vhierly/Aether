@@ -14,19 +14,24 @@
 //! shell/batch escaping, we:
 //!
 //! 1. download + extract the new ZIP into a staging folder ([`prepare_update`]);
-//! 2. copy the *current* `AetherDesk.exe` to a sibling `aether_updater.exe`
-//!    and launch it with `--apply-update <staging> <install_root>`
-//!    ([`schedule_restart`]);
+//! 2. copy the *current* `AetherDesk.exe` into a fresh per-run directory inside
+//!    the update workdir and launch that copy with
+//!    `--apply-update <staging> <install_root>` ([`schedule_restart`]);
 //! 3. exit the running instance (freeing the original exe file lock).
 //!
-//! The copy (running from the temp path) then waits for the original exe to be
-//! unlocked, swaps the files in, cleans up and relaunches `AetherDesk.exe`.
+//! The copy (running from the per-run temp directory) then waits for the
+//! original exe to be unlocked, swaps the files in, cleans up and relaunches
+//! `AetherDesk.exe`.
 //!
 //! # Safety invariants
 //! - `AetherData` (user config, themes, wallpapers, backups) is **never** touched:
 //!   the release ZIP does not contain it, and the swap skips it explicitly.
 //! - Extraction uses `enclosed_name()` to prevent path-traversal from a malicious
 //!   ZIP (defense in depth, even though releases come only from the private repo).
+//! - The updater copy lives in a directory claimed with an exclusive
+//!   `create_dir`, and its SHA-256 is compared against the running exe right
+//!   before it is spawned, so a file swapped into the workdir between staging
+//!   and spawn is never executed.
 
 use crate::core::paths::LocalAppPaths;
 use crate::updater::github::{GithubRelease, GithubReleaseManager};
@@ -34,8 +39,21 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
+
+/// Reuse the single SHA-256 implementation the uninstaller already relies on.
+pub(crate) use super::desk_uninstall::hash_file;
+
+/// Age after which a per-run updater directory is considered abandoned.
+const STAGED_UPDATER_MAX_AGE: Duration = Duration::from_secs(60 * 60);
+
+/// Distinguishes staging directories created within the same process.
+static STAGE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+/// Name of the executable copy inside a per-run directory.
+const UPDATER_COPY_NAME: &str = "aether_updater.exe";
 
 /// A fully staged update, ready to be applied after the current instance exits.
 pub struct PreparedUpdate {
@@ -122,8 +140,8 @@ pub async fn prepare_update(app: &tauri::AppHandle) -> Result<Option<PreparedUpd
 }
 
 /// Downloads and stages the latest STABLE AetherDesk release with no version
-/// gate: used to leave the test channel ("Restore" in the UI) back to the
-/// previous stable build. The caller restarts the process afterwards.
+/// gate: used by "Restore" in the UI to leave the test channel for the stable
+/// one. The caller restarts the process afterwards.
 pub async fn prepare_stable_restore() -> Result<Option<PreparedUpdate>, String> {
     let manager = GithubReleaseManager::new();
     let release = manager
@@ -179,9 +197,17 @@ pub fn schedule_restart(update: &PreparedUpdate) -> Result<(), String> {
     let current_exe =
         std::env::current_exe().map_err(|e| format!("Failed to resolve current exe: {e}"))?;
 
-    let updater_path = update_workdir().join("aether_updater.exe");
-    fs::copy(&current_exe, &updater_path)
-        .map_err(|e| format!("Failed to stage updater copy: {e}"))?;
+    let updater_path = stage_updater(&current_exe)?;
+
+    // Re-check the copy on disk immediately before the spawn: staging and the
+    // spawn are separate steps, so another writer at the same integrity level
+    // could still have replaced the file in between.
+    if let Err(error) = verify_staged_copy(&updater_path, &current_exe) {
+        if let Some(staged_dir) = updater_path.parent() {
+            let _ = fs::remove_dir_all(staged_dir);
+        }
+        return Err(error);
+    }
 
     Command::new(&updater_path)
         .arg("--apply-update")
@@ -193,9 +219,95 @@ pub fn schedule_restart(update: &PreparedUpdate) -> Result<(), String> {
     Ok(())
 }
 
+/// Copies `exe` into a fresh `run-<pid>-<n>` directory of the update workdir and
+/// returns the copy's path. The directory is created exclusively (`create_dir`
+/// fails when it exists), so no other process can place a file at that name
+/// beforehand, and the copy is verified before it is returned.
+fn stage_updater(exe: &Path) -> Result<PathBuf, String> {
+    let workdir = update_workdir();
+    fs::create_dir_all(&workdir)
+        .map_err(|e| format!("Failed to create update workdir {}: {e}", workdir.display()))?;
+
+    let mut staged_dir = None;
+    for _ in 0..1024 {
+        let sequence = STAGE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let candidate = workdir.join(format!("run-{}-{sequence}", std::process::id()));
+        match fs::create_dir(&candidate) {
+            Ok(()) => {
+                staged_dir = Some(candidate);
+                break;
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(format!(
+                    "Failed to create updater staging dir {}: {error}",
+                    candidate.display()
+                ))
+            }
+        }
+    }
+    let staged_dir = staged_dir.ok_or_else(|| {
+        format!(
+            "Failed to claim an updater staging dir under {}",
+            workdir.display()
+        )
+    })?;
+
+    let staged = staged_dir.join(UPDATER_COPY_NAME);
+    if let Err(error) = fs::copy(exe, &staged) {
+        let _ = fs::remove_dir_all(&staged_dir);
+        return Err(format!("Failed to stage updater copy: {error}"));
+    }
+
+    if let Err(error) = verify_staged_copy(&staged, exe) {
+        let _ = fs::remove_dir_all(&staged_dir);
+        return Err(error);
+    }
+
+    Ok(staged)
+}
+
+/// Fails unless the staged copy is byte-identical (SHA-256) to the source exe.
+fn verify_staged_copy(staged: &Path, source: &Path) -> Result<(), String> {
+    let source_hash = hash_file(source)?;
+    let staged_hash = hash_file(staged)?;
+    if staged_hash != source_hash {
+        return Err(format!(
+            "Staged updater copy {} does not match the running executable",
+            staged.display()
+        ));
+    }
+    Ok(())
+}
+
+/// Test-only wrapper: stages a copy of the test binary with the same rules the
+/// real self-update uses.
+#[cfg(test)]
+pub(crate) fn stage_updater_for_test() -> Result<PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("Failed to resolve current exe: {e}"))?;
+    stage_updater(&exe)
+}
+
+/// Validates that `install_root` is the live AetherDesk installation before a
+/// staged update is merged into it: absolute, free of links/reparse points, not
+/// a protected user folder, and holding the same `AetherDesk.exe` as this helper.
+pub fn validate_install_root(install_root: &Path) -> Result<PathBuf, String> {
+    super::desk_uninstall::validate_target(install_root)
+        .map_err(|error| format!("{}: {error}", install_root.display()))
+}
+
 /// Applies a staged update. Runs as the `--apply-update` process (a copy of the
 /// binary living in the temp folder), so it can replace the original exe.
 pub fn run_apply_update(staging: &Path, install_root: &Path) -> i32 {
+    // Validate before any side effect: a wrong or protected root must never be
+    // written to, and the check needs the installed exe still in place.
+    let install_root = match validate_install_root(install_root) {
+        Ok(root) => root,
+        Err(error) => {
+            eprintln!("[AetherDesk] refusing update: {error}");
+            return 1;
+        }
+    };
     let exe = install_root.join("AetherDesk.exe");
     let old = install_root.join("AetherDesk.exe.old");
 
@@ -209,14 +321,15 @@ pub fn run_apply_update(staging: &Path, install_root: &Path) -> i32 {
     let _ = fs::rename(&exe, &old);
 
     // Merge staging into the install root, never touching AetherData.
-    if let Err(e) = merge_tree(staging, install_root) {
+    if let Err(e) = merge_tree(staging, &install_root) {
         eprintln!("[AetherDesk] update apply failed: {e}");
         let _ = fs::rename(&old, &exe);
         return 1;
     }
 
-    // Cleanup staging and the downloaded zip (the temp `aether_updater.exe` is
-    // left in place because it is the currently running process).
+    // Cleanup staging and the downloaded zip. The per-run directory holding the
+    // currently running updater copy stays until `cleanup_stale_artifacts` ages
+    // it out, because Windows cannot delete a running exe.
     let _ = fs::remove_file(old);
     let _ = fs::remove_dir_all(staging);
     let _ = fs::remove_file(update_workdir().join("aetherdesk_update.zip"));
@@ -226,11 +339,45 @@ pub fn run_apply_update(staging: &Path, install_root: &Path) -> i32 {
     0
 }
 
-/// Removes any leftover update artifacts from a previous, possibly interrupted
-/// self-update (staging, zip, stale updater copy). Safe to call on normal app
-/// startup because in that context no updater process is running.
+/// Removes leftovers from a previous, possibly interrupted self-update: the
+/// downloaded ZIP, the extraction staging and abandoned per-run updater
+/// directories. Safe to call on normal app startup.
+///
+/// Per-run directories are age-based only: a directory whose updater is still
+/// running cannot be deleted on Windows, and deleting a fresh one would race a
+/// spawn that is about to happen. An hour is far longer than any apply takes.
 pub fn cleanup_stale_artifacts() {
-    let _ = fs::remove_dir_all(update_workdir());
+    let workdir = update_workdir();
+    let now = SystemTime::now();
+
+    if let Ok(entries) = fs::read_dir(&workdir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let is_run_dir = name
+                .to_str()
+                .is_some_and(|name| name.starts_with("run-") && entry.path().is_dir());
+            if is_run_dir {
+                let abandoned = entry
+                    .metadata()
+                    .and_then(|metadata| metadata.modified())
+                    .map(|modified| {
+                        now.duration_since(modified)
+                            .is_ok_and(|age| age > STAGED_UPDATER_MAX_AGE)
+                    })
+                    .unwrap_or(false);
+                if abandoned {
+                    let _ = fs::remove_dir_all(entry.path());
+                }
+            }
+        }
+    }
+
+    // Download/extract artifacts are never in use at startup: the apply process
+    // removes them itself once it succeeds. The updater copy lives only inside a
+    // run directory, so a copy at the workdir root cannot belong to this flow.
+    let _ = fs::remove_dir_all(workdir.join("staging"));
+    let _ = fs::remove_file(workdir.join("aetherdesk_update.zip"));
+    let _ = fs::remove_file(workdir.join(UPDATER_COPY_NAME));
 }
 
 // ---------------------------------------------------------------------------

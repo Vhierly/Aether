@@ -484,6 +484,8 @@ mod repository_tests {
         normalize_settings(&mut settings);
         assert!(settings.library_banner_steamid.is_empty());
     }
+    // Committing re-encrypts provider credentials, which only exists on Windows.
+    #[cfg(target_os = "windows")]
     #[test]
     fn update_or_reset_quarantines_garbage_and_starts_from_defaults() {
         let dir = tempfile::tempdir().unwrap();

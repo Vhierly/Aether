@@ -52,7 +52,11 @@ export const StoreView = memo(function StoreView({
       <StoreSearchBar isLoading={catalog.isLoading} onSearch={catalog.runSearch} onClear={catalog.clearSearch} />
       <div className="store-separator"></div>
       <div style={{ display: 'flex', gap: '12px', padding: '8px 0', flexWrap: 'wrap', alignItems: 'center' }}>
-        <button className="settings-small-btn" onClick={() => catalog.refreshCatalog()} disabled={catalog.isTrendingLoading}>
+        <button
+          className="settings-small-btn"
+          onClick={() => catalog.refreshCatalog()}
+          disabled={catalog.isTrendingLoading}
+        >
           {catalog.isTrendingLoading ? 'Refreshing…' : 'Refresh'}
         </button>
         <label style={{ fontSize: '13px' }}>

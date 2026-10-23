@@ -112,7 +112,7 @@ const BUNDLED_FILES: &[(&str, &str)] = &[
     ),
 ];
 
-fn hash_file(path: &Path) -> Result<String, String> {
+pub(crate) fn hash_file(path: &Path) -> Result<String, String> {
     let mut file = fs::File::open(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let mut digest = Sha256::new();
     let mut buffer = [0_u8; 16 * 1024];
@@ -176,7 +176,7 @@ fn validate_root(
     Ok(root)
 }
 
-pub(super) fn validate_target(root: &Path) -> Result<PathBuf, String> {
+pub(crate) fn validate_target(root: &Path) -> Result<PathBuf, String> {
     let helper = std::env::current_exe().map_err(|e| e.to_string())?;
     let protected: Vec<_> = [
         dirs::home_dir(),

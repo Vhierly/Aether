@@ -35,6 +35,7 @@ pub mod home_links_tests;
 pub mod hubcap_monitor_tests;
 pub mod hubcap_quota_tests;
 pub mod ipc_contract_tests;
+pub mod launch_options_tests;
 pub mod local_file_classification_tests;
 pub mod local_lua_name_tests;
 pub mod lua_build_validation_tests;
@@ -58,4 +59,9 @@ pub mod steam_library_issue_tests;
 pub mod store_items_tests;
 pub mod store_suggest_tests;
 pub mod tauri_config_tests;
+pub mod updater_apply_tests;
 pub mod versioning_snapshot_tests;
+// The installer helpers it covers are `#[cfg(target_os = "windows")]`, so the
+// module cannot compile off Windows; upstream only runs `cargo test` on Windows.
+#[cfg(target_os = "windows")]
+pub mod vn_patcher_tests;

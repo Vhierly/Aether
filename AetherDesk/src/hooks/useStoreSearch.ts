@@ -12,6 +12,14 @@ export interface StoreGameResult {
   has_delisted?: boolean;
   imageUrl?: string;
   heroImageUrl?: string;
+  /** Filled in by `useGenreEnrichment`; drives the genre filter. */
+  genres?: string[];
+  /** Steam release timestamp, already supplied by `UnifiedStoreGame`. */
+  release_date_unix?: number;
+  /** Filled in by the DRM hooks; rendered as a badge on the store card. */
+  drm_protection?: string;
+  uco2_supported?: boolean;
+  crack_status?: string;
 }
 
 interface CachedStoreSearchResponse {
