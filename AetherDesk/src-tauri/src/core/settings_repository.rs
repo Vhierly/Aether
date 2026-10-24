@@ -410,7 +410,6 @@ impl SettingsManager {
 /// `SettingsManager::new(app).load()` idiom that was copy-pasted across every
 /// command and made review harder. The cache check comes before the manager so
 /// a hit skips the migration probe, the file lock and DPAPI.
-)
 #[inline]
 pub fn load_settings(app: &tauri::AppHandle) -> AppSettings {
     let config_dir = LocalAppPaths::data_root_for_app(app).join("config");

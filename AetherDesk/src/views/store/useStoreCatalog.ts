@@ -28,7 +28,7 @@ export function useStoreCatalog({ active, settingsRevision, settingsReady }: Par
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const storeSearch = useStoreSearch();
   const trending = useTrendingStore(storeSearch.setResults, storeFrontFilter);
-  const { results, setResults, isLoading, hasSearched, activeQuery, search, clear } = storeSearch;
+  const { results, setResults, isLoading, hasSearched, activeQuery, error, search, clear } = storeSearch;
 
   useEffect(() => {
     if (!active || !settingsReady || observedSettingsRevision.current === settingsRevision) return;
@@ -36,7 +36,8 @@ export function useStoreCatalog({ active, settingsRevision, settingsReady }: Par
     setPage(1);
     trending.reset();
     if (activeQuery.trim()) {
-      search(activeQuery).catch((error) => console.warn('Store search refresh after settings save failed:', error));
+      // A failed refresh surfaces through the hook's error state.
+      void search(activeQuery);
       return;
     }
     clear();
@@ -122,7 +123,7 @@ export function useStoreCatalog({ active, settingsRevision, settingsReady }: Par
 
   useEffect(() => {
     if (!active || pageGames.length === 0) return;
-)
+
     let cancelled = false;
     enrichDenuvoFlags(pageGames)
       .then((enriched) => {
@@ -254,7 +255,7 @@ export function useStoreCatalog({ active, settingsRevision, settingsReady }: Par
       }
       await search(query);
     } catch (error) {
-      alert(`Search error: ${error}`);
+      console.warn('Store search failed:', error);
     }
   };
 
@@ -274,6 +275,7 @@ export function useStoreCatalog({ active, settingsRevision, settingsReady }: Par
     isTrendingLoading: trending.isLoading,
     hasSearched,
     activeQuery,
+    searchError: error,
     runSearch,
     clearSearch,
     refreshCatalog,

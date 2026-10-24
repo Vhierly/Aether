@@ -5,6 +5,7 @@ import { LocalDownloadModal } from '../modals/LocalDownloadModal';
 import type { StoreGameResult } from '../hooks/useStoreSearch';
 import type { GameCardAction } from '../ui/GameCard';
 import { FolderPlusIcon } from '../ui/icons';
+import { StatusAlert } from '../ui/StatusAlert';
 import { StoreDownloadModal } from './store/StoreDownloadModal';
 import { StoreGameGrid } from './store/StoreGameGrid';
 import { StoreSearchBar } from './store/StoreSearchBar';
@@ -54,6 +55,8 @@ export const StoreView = memo(function StoreView({
 
       <StoreSearchBar isLoading={catalog.isLoading} onSearch={catalog.runSearch} onClear={catalog.clearSearch} />
       <div className="store-separator"></div>
+
+      {catalog.searchError && <StatusAlert status={{ text: `Search failed: ${catalog.searchError}`, type: 'error' }} />}
       <div style={{ display: 'flex', gap: '12px', padding: '8px 0', flexWrap: 'wrap', alignItems: 'center' }}>
         <button
           className="settings-small-btn"
@@ -125,6 +128,7 @@ export const StoreView = memo(function StoreView({
         isLoading={catalog.isLoading}
         isTrendingLoading={catalog.isTrendingLoading}
         hasSearched={catalog.hasSearched}
+        searchError={catalog.searchError}
         activeQuery={catalog.activeQuery}
         page={catalog.page}
         totalPages={catalog.totalPages}

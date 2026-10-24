@@ -12,6 +12,7 @@ const baseProps = {
   isLoading: false,
   isTrendingLoading: false,
   hasSearched: false,
+  searchError: null,
   activeQuery: '',
   useAlternativeGameCards: false,
   alternativeCardsOpacity: 100,

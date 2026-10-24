@@ -41,7 +41,6 @@ export function useAppBootstrap(params: Params) {
       }
 
       await Promise.all([params.checkDeskUpdates(), params.warnIfSteamPathMissing(), deskVersionPromise]);
-)
     };
     void hydrate();
     // App remains mounted for its lifetime; every callback is a stable hook API.
