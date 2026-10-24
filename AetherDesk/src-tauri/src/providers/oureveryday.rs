@@ -36,8 +36,15 @@ impl OureverydayClient {
         }
     }
 
-    /// Downloads the public Lua file by App ID from the shared archive proxy.
-    pub async fn download_lua_only(&self, app_id: u32) -> Result<String, String> {
+    /// Downloads the public Lua package by App ID from the shared archive proxy.
+    ///
+    /// The archive already carries the pinned `.manifest` files alongside the
+    /// Lua, so they are kept: the GitHub mirrors are only a fallback for pins
+    /// the archive does not include.
+    pub async fn download_lua_package_from_archive(
+        &self,
+        app_id: u32,
+    ) -> Result<ManifestPackage, String> {
         crate::desk_log_info!(
             "oureveryday",
             "Requesting public Lua package for {} from {}/{}.zip",
@@ -94,10 +101,11 @@ impl OureverydayClient {
         };
         crate::desk_log_info!(
             "oureveryday",
-            "Downloaded public Lua package for {} successfully",
-            crate::core::logger::format_appid(app_id)
+            "Downloaded public Lua package for {} with {} manifest file(s) from the archive",
+            crate::core::logger::format_appid(app_id),
+            package.manifest_files.len()
         );
-        Ok(package.lua_content)
+        Ok(package)
     }
 
     /// Downloads the single manifest file from the public raw GitHub mirrors.
@@ -160,16 +168,24 @@ impl OureverydayClient {
     /// Fetches the Lua file from the public archive, parses the manifest IDs inside,
     /// downloads all corresponding manifest files from public GitHub mirrors in parallel,
     /// and packages them together into a Unified ManifestPackage.
+    ///
+    /// The archive is the primary source for both the Lua and its manifests; the
+    /// mirrors only fill pins the archive does not carry, so a pin that exists
+    /// nowhere in the mirrors still installs.
     pub async fn download_lua_package(&self, app_id: u32) -> Result<ManifestPackage, String> {
-        // 1. Download and extract the main Lua file
-        let lua_content = self.download_lua_only(app_id).await?;
+        // 1. Download and extract the Lua plus whatever manifests ship with it.
+        let mut package = self.download_lua_package_from_archive(app_id).await?;
 
         // 2. Parse out setManifestid depot/manifest rows
-        let rows = LuaManifestPins::rows_from_content(&lua_content);
+        let rows = LuaManifestPins::rows_from_content(&package.lua_content);
 
-        // 3. Download the manifests in parallel (leveraging tokio tasks)
+        // 3. Ask the mirrors only for pins the archive did not already provide.
         let mut manifest_futures = Vec::new();
         for row in rows {
+            let file_name = format!("{}_{}.manifest", row.app_id, row.manifest_id);
+            if package.manifest_files.iter().any(|file| file.file_name == file_name) {
+                continue;
+            }
             let depot_id = row.app_id; // in LuaManifestRow, app_id holds the depot ID
             let manifest_id = row.manifest_id.clone();
 
@@ -181,10 +197,7 @@ impl OureverydayClient {
                     client: client_clone,
                 };
                 match oe.download_manifest_file(depot_id, &manifest_id).await {
-                    Ok(bytes) => Some(ManifestPackageFile {
-                        file_name: format!("{}_{}.manifest", depot_id, manifest_id),
-                        bytes,
-                    }),
+                    Ok(bytes) => Some(ManifestPackageFile { file_name, bytes }),
                     Err(_) => {
                         // Silent fallback - if one fails, we just don't add it to the package,
                         // allowing the Lua setup to proceed even if some manifest isn't in mirrors.
@@ -195,10 +208,9 @@ impl OureverydayClient {
         }
 
         // Wait for all manifest downloads to finish
-        let mut manifest_files = Vec::new();
         for future in manifest_futures {
             if let Ok(Some(file)) = future.await {
-                manifest_files.push(file);
+                package.manifest_files.push(file);
             }
         }
 
@@ -206,11 +218,8 @@ impl OureverydayClient {
             "oureveryday",
             "Successfully packaged {} with {} manifest file(s) from Oureveryday",
             crate::core::logger::format_appid(app_id),
-            manifest_files.len()
+            package.manifest_files.len()
         );
-        Ok(ManifestPackage {
-            lua_content,
-            manifest_files,
-        })
+        Ok(package)
     }
 }

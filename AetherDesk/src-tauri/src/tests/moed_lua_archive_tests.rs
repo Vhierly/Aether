@@ -54,3 +54,27 @@ fn live_lua_archive_reaches_the_same_result_through_the_provider_entrypoint() {
             .expect("the provider entrypoint must accept the live archive");
     assert!(package.lua_content.contains("setManifestid"));
 }
+
+/// The archive, not the GitHub mirrors, is what carries these manifests: the
+/// mirrors 404 for the pins in this archive, so dropping the archive's copies
+/// makes the installer fail with a missing-manifest error.
+#[test]
+fn archive_manifests_cover_every_surviving_pin() {
+    let package = ManifestPackageExtractor::from_zip(ARCHIVE_APP_ID, live_archive_bytes())
+        .expect("the live MOED archive must parse");
+    let names: std::collections::HashSet<&str> = package
+        .manifest_files
+        .iter()
+        .map(|file| file.file_name.as_str())
+        .collect();
+
+    let rows = LuaManifestPins::rows_from_content(&package.lua_content);
+    assert!(!rows.is_empty(), "the archive must pin at least one depot");
+    for row in rows {
+        let expected = format!("{}_{}.manifest", row.app_id, row.manifest_id);
+        assert!(
+            names.contains(expected.as_str()),
+            "pin {expected} has no manifest in the archive, so the mirrors would be the only source"
+        );
+    }
+}
