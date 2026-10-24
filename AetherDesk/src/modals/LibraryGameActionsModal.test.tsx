@@ -25,7 +25,7 @@ const game = (id: number, state: Partial<InstalledGame> = {}): InstalledGame => 
   ...state,
 });
 
-const renderModal = (snapshot: InstalledGame, live: InstalledGame[]) => {
+const renderModal = (snapshot: InstalledGame, live: InstalledGame[], onStatus = vi.fn()) => {
   useLibraryGamesMock.mockReturnValue({
     games: live,
     isLoading: false,
@@ -41,7 +41,7 @@ const renderModal = (snapshot: InstalledGame, live: InstalledGame[]) => {
       game={snapshot}
       isProcessing={false}
       onClose={vi.fn()}
-      onStatus={vi.fn()}
+      onStatus={onStatus}
       onRefresh={vi.fn()}
       onOpenVersionEditor={vi.fn()}
     />
@@ -157,5 +157,80 @@ describe('OFME Clean flow', () => {
 
     await waitFor(() => expect(screen.queryByText(/Remove online-fix.me crack files/)).not.toBeInTheDocument());
     expect(cleanCalls).toEqual([{ confirm: false }]);
+  });
+});
+
+describe('LibraryGameActionsModal bundle export', () => {
+  const onStatus = vi.fn();
+
+  beforeEach(() => {
+    onStatus.mockClear();
+    queryGameStateMock.mockResolvedValue(false);
+    renderModal(game(100, { installed: true }), [game(100, { installed: true })], onStatus);
+  });
+
+  it('exports the Lua and every pinned manifest, and reports the saved path', async () => {
+    const user = userEvent.setup();
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'export_game_bundle') {
+        return {
+          path: 'C:/Users/me/Downloads/Game 100.zip',
+          pins: 3,
+          manifestsIncluded: 3,
+          manifestsGenerated: 1,
+          manifestsMissing: [],
+          generationError: null,
+        };
+      }
+      return undefined;
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Export Lua and manifests' }));
+
+    await waitFor(() =>
+      expect(onStatus).toHaveBeenCalledWith(
+        'Saved C:/Users/me/Downloads/Game 100.zip (3 of 3 pinned manifest(s), 1 generated via Hubcap).',
+        'success'
+      )
+    );
+  });
+
+  it('names the pins it could not include instead of claiming a complete bundle', async () => {
+    const user = userEvent.setup();
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'export_game_bundle') {
+        return {
+          path: 'C:/Users/me/Downloads/Game 100.zip',
+          pins: 4,
+          manifestsIncluded: 2,
+          manifestsGenerated: 0,
+          manifestsMissing: ['12345:999', '12346:888'],
+          generationError: 'no Hubcap API key is configured',
+        };
+      }
+      return undefined;
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Export Lua and manifests' }));
+
+    await waitFor(() =>
+      expect(onStatus).toHaveBeenCalledWith(
+        'Saved C:/Users/me/Downloads/Game 100.zip (2 of 4 pinned manifest(s)). ' +
+          '2 pinned manifest(s) are missing and could not be generated: no Hubcap API key is configured.',
+        'info'
+      )
+    );
+  });
+
+  it('surfaces a backend failure as an error', async () => {
+    const user = userEvent.setup();
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'export_game_bundle') throw new Error('Cannot export app 100');
+      return undefined;
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Export Lua and manifests' }));
+
+    await waitFor(() => expect(onStatus).toHaveBeenCalledWith('Export failed: Cannot export app 100', 'error'));
   });
 });

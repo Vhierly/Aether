@@ -1,8 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { StoreGameResult } from '../../hooks/useStoreSearch';
 import { GameCard, type GameCardAction } from '../../ui/GameCard';
-
-const ITEMS_PER_PAGE = 20;
+import { STORE_ITEMS_PER_PAGE } from '../../constants/store';
 
 interface StoreGameGridProps {
   games: StoreGameResult[];
@@ -94,7 +93,7 @@ export function StoreGameGrid({
             ) : (
               <button
                 key={p}
-                disabled={p > Math.ceil(resultsLength / ITEMS_PER_PAGE)}
+                disabled={p > Math.ceil(resultsLength / STORE_ITEMS_PER_PAGE)}
                 onClick={() => onPageChange(p)}
                 className={`pagination-btn${p === page ? ' pagination-active' : ''}`}
               >

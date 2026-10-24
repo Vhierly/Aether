@@ -7,8 +7,7 @@ import { enrichGenres } from '../../hooks/useGenreEnrichment';
 import { useStoreSearch } from '../../hooks/useStoreSearch';
 import { preloadGameCovers } from '../../ui/GameCover';
 import { useTrendingStore } from './useTrendingStore';
-
-const ITEMS_PER_PAGE = 20;
+import { STORE_ITEMS_PER_PAGE } from '../../constants/store';
 
 type SortMode = 'newest' | 'trending' | 'name';
 
@@ -75,7 +74,7 @@ export function useStoreCatalog({ active, settingsRevision, settingsReady }: Par
     setPage(1);
     clear();
     trending.reset();
-    void trending.loadNext(ITEMS_PER_PAGE * 2);
+    void trending.loadNext(STORE_ITEMS_PER_PAGE * 2);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeFrontFilter]);
 
@@ -95,9 +94,9 @@ export function useStoreCatalog({ active, settingsRevision, settingsReady }: Par
       return 0; // trending: keep original order
     });
 
-  const totalPages = Math.ceil(filteredSortedResults.length / ITEMS_PER_PAGE) || 1;
-  const startIndex = (page - 1) * ITEMS_PER_PAGE;
-  const pageGames = filteredSortedResults.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(filteredSortedResults.length / STORE_ITEMS_PER_PAGE) || 1;
+  const startIndex = (page - 1) * STORE_ITEMS_PER_PAGE;
+  const pageGames = filteredSortedResults.slice(startIndex, startIndex + STORE_ITEMS_PER_PAGE);
   const pageKey = pageGames.map((game) => game.appId).join(',');
 
   useEffect(() => {
@@ -111,8 +110,8 @@ export function useStoreCatalog({ active, settingsRevision, settingsReady }: Par
 
   useEffect(() => {
     if (!active || !settingsReady || activeQuery.trim()) return;
-    if (results.length < (page + 1) * ITEMS_PER_PAGE) {
-      void trending.loadNext(ITEMS_PER_PAGE * 2);
+    if (results.length < (page + 1) * STORE_ITEMS_PER_PAGE) {
+      void trending.loadNext(STORE_ITEMS_PER_PAGE * 2);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, page, results.length, activeQuery, settingsReady]);
@@ -226,7 +225,7 @@ export function useStoreCatalog({ active, settingsRevision, settingsReady }: Par
       clear();
       trending.reset();
     }
-    void trending.loadNext(ITEMS_PER_PAGE * 2);
+    void trending.loadNext(STORE_ITEMS_PER_PAGE * 2);
   };
 
   // Live update: periodically refresh the trending catalog so new releases

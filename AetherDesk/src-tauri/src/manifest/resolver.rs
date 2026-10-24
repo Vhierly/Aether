@@ -55,7 +55,7 @@ pub fn missing_labels(pins: &[DepotManifestPin]) -> Vec<String> {
 
 /// Finds the exact local manifest in Steam's two cache folders or in the
 /// per-game AetherData backup. Empty files are not considered local hits.
-fn exact_local_manifest_path(
+pub(crate) fn exact_local_manifest_path(
     steam_path: &str,
     app_id: u32,
     pin: &DepotManifestPin,
