@@ -47,6 +47,7 @@ pub mod manifest_identity_tests;
 pub mod manifest_package_tests;
 pub mod manifest_pins_tests;
 pub mod manifest_source_tests;
+pub mod moed_lua_archive_tests;
 pub mod normalize_tests;
 pub mod online_bundle_tests;
 pub mod online_deploy_config_tests;
