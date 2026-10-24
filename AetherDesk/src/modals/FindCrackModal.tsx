@@ -1,7 +1,7 @@
 import React from 'react';
 import { useModalDismiss } from '../hooks/useModalDismiss';
 
-type FindCrackResource = 'ofme' | 'gcw' | 'csrinru';
+type FindCrackResource = 'ofme' | 'gcw' | 'csrinru' | 'xatab';
 
 interface FindCrackModalProps {
   onClose: () => void;
@@ -44,7 +44,11 @@ export const FindCrackModal: React.FC<FindCrackModalProps> = ({ onClose, onSelec
             <button className="game-action-btn" onClick={() => onSelect('csrinru')} title="cs.rin.ru">
               CSRINRU
             </button>
-            <button className="game-action-btn" disabled title="XATAB is not available yet">
+            <button
+              className="game-action-btn"
+              onClick={() => onSelect('xatab')}
+              title="byxatab.com — repacked full-game releases, not a crack to apply"
+            >
               XATAB
             </button>
           </div>

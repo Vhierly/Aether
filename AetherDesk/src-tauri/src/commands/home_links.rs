@@ -12,6 +12,7 @@ pub fn open_home_resource(site: String, game_name: String) -> Result<(), String>
         "ofme" => build_ofme_url(game_name),
         "gcw" => build_gcw_url(game_name),
         "csrinru" => build_csrinru_url(game_name),
+        "xatab" => build_xatab_url(game_name),
         _ => {
             crate::desk_log_warn!(
                 "home_links",
@@ -49,6 +50,15 @@ pub(crate) fn build_gcw_url(game_name: &str) -> String {
     format!(
         "https://gamecopyworld.eu/games/search_results.shtml?q={}",
         encode_query_value(&build_gcw_query(game_name))
+    )
+}
+
+// Xatab (byxatab.com) is a DataLife Engine site with the same search form as
+// online-fix.me, so the query normalization is identical.
+pub(crate) fn build_xatab_url(game_name: &str) -> String {
+    format!(
+        "https://byxatab.com/index.php?do=search&subaction=search&story={}",
+        encode_query_value(&build_ofme_query(game_name))
     )
 }
 

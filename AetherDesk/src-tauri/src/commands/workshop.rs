@@ -529,6 +529,43 @@ pub struct WorkshopSyncReport {
     /// monitor re-runs the lane shortly, so a depotcache wipe can never burn
     /// the whole daily quota (or stall the poll loop) in one storm.
     pub deferred: usize,
+    /// Per-item outcome, so the UI can name the items behind the counters
+    /// instead of only reporting how many.
+    pub items: Vec<WorkshopItemReport>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WorkshopItemStatus {
+    Ready,
+    Deferred,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WorkshopItemReason {
+    /// Skipped because the run hit `WORKSHOP_MAX_GENERATIONS_PER_RUN`.
+    GenerationCap,
+    /// Skipped because the run hit `WORKSHOP_MAX_CONTENT_REQUESTS_PER_RUN`.
+    ContentCap,
+    UnknownError,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkshopItemReport {
+    pub app_id: u32,
+    pub app_name: Option<String>,
+    pub workshop_id: u64,
+    /// String on purpose: Steam manifest GIDs exceed JavaScript's safe integer.
+    pub manifest_gid: String,
+    pub status: WorkshopItemStatus,
+    /// `None` for a ready item: being ready is not a failure.
+    pub reason: Option<WorkshopItemReason>,
+    /// A valid manifest was staged but Steam's Workshop content folder is
+    /// missing or empty, so the item is not playable yet.
+    pub content_missing: bool,
 }
 
 /// Scans Steam's appworkshop ACF files and proactively stages missing
@@ -605,12 +642,31 @@ pub async fn sync_hubcap_workshop_manifests(
     let mut last_spawn: Option<Instant> = None;
     let mut spawn_budget = WORKSHOP_MAX_CONTENT_REQUESTS_PER_RUN;
     let mut remote_attempts = 0usize;
+    // Resolve app names once for the whole run: the per-item report names the
+    // game instead of leaving an opaque App ID.
+    let app_names = {
+        let cache_dir = LocalAppPaths::data_root_for_app(&app).join("cache");
+        crate::steam::app_names::SteamAppNameResolver::new(&cache_dir)
+            .cached_names(items.iter().map(|item| item.app_id).collect())
+    };
     for item in items {
+        let item_report = |status, reason, content_missing| WorkshopItemReport {
+            app_id: item.app_id,
+            app_name: app_names.get(&item.app_id).cloned(),
+            workshop_id: item.workshop_id,
+            manifest_gid: item.manifest_gid.to_string(),
+            status,
+            reason,
+            content_missing,
+        };
         let needs_remote = !has_local_manifest_gid(&steam_path, item.manifest_gid)
             && !cached_workshop_manifest_matches(item.workshop_id, item.manifest_gid);
         if needs_remote {
             if remote_attempts >= WORKSHOP_MAX_GENERATIONS_PER_RUN {
                 report.deferred += 1;
+                report
+                    .items
+                    .push(item_report(WorkshopItemStatus::Deferred, Some(WorkshopItemReason::GenerationCap), false));
                 continue;
             }
             remote_attempts += 1;
@@ -625,46 +681,55 @@ pub async fn sync_hubcap_workshop_manifests(
         )
         .await
         {
-            Ok(SyncOrigin::Generated {
-                content_present,
-                content_deferred,
-            }) => {
-                report.generated += 1;
-                if !content_present {
-                    report.content_missing += 1;
+            Ok(origin) => {
+                let (content_present, content_deferred) = match &origin {
+                    SyncOrigin::Generated {
+                        content_present,
+                        content_deferred,
+                    }
+                    | SyncOrigin::Cached {
+                        content_present,
+                        content_deferred,
+                    }
+                    | SyncOrigin::AlreadyLocal {
+                        content_present,
+                        content_deferred,
+                    } => (*content_present, *content_deferred),
+                };
+                let content_missing = !content_present;
+                match origin {
+                    SyncOrigin::Generated { .. } => report.generated += 1,
+                    SyncOrigin::Cached { .. } => report.restored_from_cache += 1,
+                    SyncOrigin::AlreadyLocal { .. } => {
+                        if content_present {
+                            report.already_local += 1;
+                        } else {
+                            report.content_missing += 1;
+                        }
+                    }
                 }
                 if content_deferred {
                     report.deferred += 1;
                 }
-            }
-            Ok(SyncOrigin::Cached {
-                content_present,
-                content_deferred,
-            }) => {
-                report.restored_from_cache += 1;
-                if !content_present {
-                    report.content_missing += 1;
-                }
-                if content_deferred {
-                    report.deferred += 1;
-                }
-            }
-            Ok(SyncOrigin::AlreadyLocal {
-                content_present,
-                content_deferred,
-            }) => {
-                if content_present {
-                    report.already_local += 1;
+                // A deferred item is not ready: the next lane pass owns it.
+                let (status, reason) = if content_deferred {
+                    (
+                        WorkshopItemStatus::Deferred,
+                        Some(WorkshopItemReason::ContentCap),
+                    )
                 } else {
-                    report.content_missing += 1;
-                }
-                if content_deferred {
-                    report.deferred += 1;
-                }
+                    (WorkshopItemStatus::Ready, None)
+                };
+                report.items.push(item_report(status, reason, content_missing));
             }
             Err(error) => {
                 report.failed += 1;
                 crate::desk_log_warn!("hubcap", "Workshop manifest preparation failed: {}", error);
+                report.items.push(item_report(
+                    WorkshopItemStatus::Failed,
+                    Some(WorkshopItemReason::UnknownError),
+                    false,
+                ));
             }
         }
     }

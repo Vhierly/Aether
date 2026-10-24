@@ -1,4 +1,4 @@
-use crate::commands::home_links::{build_csrinru_url, build_gcw_url, build_ofme_url};
+use crate::commands::home_links::{build_csrinru_url, build_gcw_url, build_ofme_url, build_xatab_url};
 
 // Helper to extract query values for assertions without depending on private fns.
 fn extract_ofme_query(url: &str) -> String {
@@ -119,4 +119,25 @@ fn csrinru_keeps_095_numeric_drop_policy() {
     let kw = extract_csrinru_keywords(&url);
 
     assert_eq!(kw, "crusader+kings");
+}
+
+#[test]
+fn xatab_uses_the_dle_story_search_and_ofme_normalization() {
+    let url = build_xatab_url("DARK SOULS™ III");
+
+    assert!(
+        url.starts_with("https://byxatab.com/index.php?do=search&subaction=search&story="),
+        "unexpected xatab url: {}",
+        url
+    );
+    // Xatab is a DataLife Engine site with the same search form as online-fix.me.
+    assert_eq!(extract_ofme_query(&url), "dark+souls+iii");
+}
+
+#[test]
+fn xatab_keeps_real_subtitle_after_colon() {
+    let url = build_xatab_url("Call of Duty: Black Ops II");
+    let q = extract_ofme_query(&url);
+
+    assert_eq!(q, "call+of+duty+black+ops+ii");
 }

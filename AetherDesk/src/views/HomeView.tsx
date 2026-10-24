@@ -12,7 +12,7 @@ import { resolveLiveGame } from '../util/library';
 
 const MAX_VISIBLE_RESULTS = 5;
 
-type HomeResource = 'ofme' | 'gcw' | 'csrinru';
+type HomeResource = 'ofme' | 'gcw' | 'csrinru' | 'xatab';
 
 interface SteamlessRunResult {
   success: boolean;

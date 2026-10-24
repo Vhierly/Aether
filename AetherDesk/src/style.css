@@ -2396,6 +2396,45 @@ body {
   padding: 1px 5px;
 }
 
+.workshop-report {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.workshop-report-group-label {
+  margin: 0 0 4px;
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.workshop-report-list {
+  margin: 0;
+  padding: 0 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.workshop-report-list li {
+  color: var(--color-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.workshop-report-item-name {
+  color: #ffffff;
+}
+
+.workshop-report-item-reason {
+  color: var(--color-muted);
+}
+
 .uninstall-option-card {
   margin-top: 2px;
   padding: 4px 0;

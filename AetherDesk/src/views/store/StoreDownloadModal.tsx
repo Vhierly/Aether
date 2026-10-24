@@ -67,7 +67,12 @@ export function StoreDownloadModal({
               >
                 Ryuu
               </button>
-              <button disabled className="source-btn source-btn-disabled" title="MOED source is currently unavailable">
+              <button
+                disabled={isDownloading}
+                onClick={() => onSourceChange('oureveryday')}
+                className={`source-btn ${source === 'oureveryday' ? 'active' : ''}`}
+                title="MOED — public source, no API key required"
+              >
                 MOED
               </button>
             </div>

@@ -40,7 +40,18 @@ describe('StoreDownloadModal', () => {
     await user.click(screen.getByRole('button', { name: 'Ryuu' }));
 
     expect(view.onSourceChange).toHaveBeenCalledWith('ryuu');
-    expect(screen.getByRole('button', { name: 'MOED' })).toBeDisabled();
+  });
+
+  it('offers the public MOED source without an API key', async () => {
+    const user = userEvent.setup();
+    const view = renderModal();
+
+    const moed = screen.getByRole('button', { name: 'MOED' });
+    expect(moed).toBeEnabled();
+
+    await user.click(moed);
+
+    expect(view.onSourceChange).toHaveBeenCalledWith('oureveryday');
   });
 
   it('dispatches latest and specific actions', async () => {

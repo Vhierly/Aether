@@ -15,7 +15,65 @@ export interface WorkshopSyncReport {
   failed: number;
   /** Items beyond the per-run generation cap; the next lane pass handles them. */
   deferred: number;
+  /** Per-item outcome, so the report can name the items behind the counters. */
+  items: WorkshopItemReport[];
 }
+
+export type WorkshopItemStatus = 'ready' | 'deferred' | 'failed';
+
+/** Why an item is not ready. `null` on a ready item: being ready is not a failure. */
+export type WorkshopItemReason = 'generationCap' | 'contentCap' | 'unknownError' | null;
+
+export interface WorkshopItemReport {
+  appId: number;
+  appName: string | null;
+  workshopId: number;
+  manifestGid: string;
+  status: WorkshopItemStatus;
+  reason: WorkshopItemReason;
+  contentMissing: boolean;
+}
+
+const itemLabel = (item: WorkshopItemReport): string => {
+  const name = item.appName?.trim() || `App ${item.appId}`;
+  return `${name} — mod #${item.workshopId}`;
+};
+
+const reasonLabel = (item: WorkshopItemReport): string => {
+  if (item.status === 'ready') {
+    return item.contentMissing
+      ? 'Manifest staged; Steam still needs to download the content.'
+      : 'Manifest staged; start the download in Steam.';
+  }
+  switch (item.reason) {
+    case 'generationCap':
+      return 'Deferred by the per-run limit; run Repair again to retry.';
+    case 'contentCap':
+      return 'Manifest staged; the content download was deferred to the next pass.';
+    default:
+      return 'Failed.';
+  }
+};
+
+const groupItems = (items: WorkshopItemReport[], status: WorkshopItemStatus) =>
+  items.filter((item) => item.status === status);
+
+const ReportGroup = ({ label, items }: { label: string; items: WorkshopItemReport[] }) =>
+  items.length === 0 ? null : (
+    <div className="workshop-report-group">
+      <p className="workshop-report-group-label">
+        {label} ({items.length})
+      </p>
+      <ul className="workshop-report-list">
+        {items.map((item) => (
+          <li key={`${item.appId}-${item.workshopId}`}>
+            <span className="workshop-report-item-name">{itemLabel(item)}</span>
+            <span className="workshop-report-item-reason">{reasonLabel(item)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 
 export interface WorkshopRepairModalProps {
   /** Toast feedback in the hosting view (same StatusAlert as other actions). */
@@ -60,16 +118,19 @@ const formatReport = (report: WorkshopSyncReport): string => {
 export const WorkshopRepairModal = ({ onStatus, onClose }: WorkshopRepairModalProps) => {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [items, setItems] = useState<WorkshopItemReport[]>([]);
 
   const runRepair = async () => {
     if (busy) return;
     setBusy(true);
     setResult(null);
+    setItems([]);
     onStatus('Repairing Steam Workshop manifests...', 'info');
     try {
       const report = await invoke<WorkshopSyncReport>('sync_hubcap_workshop_manifests');
       const summary = formatReport(report);
       setResult(summary);
+      setItems(report.items ?? []);
       onStatus(summary, report.failed > 0 ? 'error' : 'success');
     } catch (err: unknown) {
       const message = `Workshop repair failed: ${toErrorMessage(err)}`;
@@ -97,6 +158,13 @@ export const WorkshopRepairModal = ({ onStatus, onClose }: WorkshopRepairModalPr
       </p>
       {busy && <p className="uninstall-modal-copy">Repairing Workshop manifests…</p>}
       {!busy && result && <p className="uninstall-modal-copy">{result}</p>}
+      {!busy && items.length > 0 && (
+        <div className="workshop-report">
+          <ReportGroup label="Ready" items={groupItems(items, 'ready')} />
+          <ReportGroup label="Deferred" items={groupItems(items, 'deferred')} />
+          <ReportGroup label="Failed" items={groupItems(items, 'failed')} />
+        </div>
+      )}
 
       <div className="uninstall-modal-actions">
         <button
