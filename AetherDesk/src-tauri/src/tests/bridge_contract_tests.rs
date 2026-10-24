@@ -21,6 +21,7 @@ fn test_component_update_info_contract() {
         is_test: false,
         release_url: "https://github.com/example/release".to_string(),
         notes: "Release notes".to_string(),
+        repo: "michelegoku3/Aether".to_string(),
     };
 
     let serialized = serde_json::to_value(&info).expect("serialize ComponentUpdateInfo");
@@ -50,6 +51,10 @@ fn test_component_update_info_contract() {
     assert_eq!(
         serialized.get("notes"),
         Some(&Value::String("Release notes".to_string()))
+    );
+    assert_eq!(
+        serialized.get("repo"),
+        Some(&Value::String("michelegoku3/Aether".to_string()))
     );
 }
 

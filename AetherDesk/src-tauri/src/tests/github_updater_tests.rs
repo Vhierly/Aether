@@ -63,24 +63,40 @@ fn test_component_version_strips_test_prefix() {
 
 #[test]
 fn test_atom_and_html_tag_parsing() {
-    let atom = r#"
+    let owner = GithubReleaseManager::release_repo_label().replace('/', "/");
+    let atom = format!(
+        r#"
         <feed>
           <entry>
-            <link rel="alternate" href="https://github.com/michelegoku3/Aether/releases/tag/desk-1.0.4"/>
+            <link rel="alternate" href="https://github.com/{owner}/releases/tag/desk-1.0.4"/>
           </entry>
           <entry>
             <id>tag:github.com,2008:Repository/1305584107/dll-0.9.8</id>
-            <link href="https://github.com/michelegoku3/Aether/releases/tag/dll-0.9.8"/>
+            <link href="https://github.com/{owner}/releases/tag/dll-0.9.8"/>
           </entry>
         </feed>
-    "#;
-    let tags = GithubReleaseManager::release_tags_from_atom(atom);
+    "#
+    );
+    let tags = GithubReleaseManager::release_tags_from_atom(&atom);
     assert!(tags.contains(&"desk-1.0.4".to_string()));
     assert!(tags.contains(&"dll-0.9.8".to_string()));
 
-    let html = r#"<a href="/michelegoku3/Aether/releases/tag/tdesk-1.0.5">tdesk-1.0.5</a>"#;
-    let html_tags = GithubReleaseManager::release_tags_from_atom(html);
+    let html = format!(r#"<a href="/{owner}/releases/tag/tdesk-1.0.5">tdesk-1.0.5</a>"#);
+    let html_tags = GithubReleaseManager::release_tags_from_atom(&html);
     assert_eq!(html_tags, vec!["tdesk-1.0.5".to_string()]);
+}
+
+#[test]
+fn test_release_repo_label_defaults_to_upstream() {
+    // Upstream's own build must keep pointing at michelegoku3/Aether.
+    assert_eq!(
+        GithubReleaseManager::release_repo_label(),
+        format!(
+            "{}/{}",
+            option_env!("AETHER_RELEASE_OWNER").unwrap_or("michelegoku3"),
+            option_env!("AETHER_RELEASE_NAME").unwrap_or("Aether")
+        )
+    );
 }
 
 #[test]
@@ -89,14 +105,16 @@ fn test_conventional_download_urls_do_not_use_api() {
     assert!(desk.iter().any(|asset| {
         asset.name == "AetherDesk-1.0.4.zip"
             && asset.browser_download_url
-                == "https://github.com/michelegoku3/Aether/releases/download/desk-1.0.4/AetherDesk-1.0.4.zip"
+                == format!(
+                    "https://github.com/{}/Aether/releases/download/desk-1.0.4/AetherDesk-1.0.4.zip",
+                    GithubReleaseManager::release_repo_label().split('/').next().unwrap()
+                )
     }));
 
     let dll = GithubReleaseManager::conventional_assets("dll-0.9.8");
     assert!(dll.iter().any(|asset| {
         asset.name == "AetherDLL-0.9.8.zip"
-            && asset.browser_download_url
-                == "https://github.com/michelegoku3/Aether/releases/download/dll-0.9.8/AetherDLL-0.9.8.zip"
+            && asset.browser_download_url.ends_with("/releases/download/dll-0.9.8/AetherDLL-0.9.8.zip")
     }));
 }
 
@@ -117,6 +135,14 @@ fn test_build_desk_test_update_info_respects_version_gate() {
         GithubReleaseManager::build_desk_test_update_info("1.0.4".to_string(), &release);
     assert!(!info_equal.update_available);
     assert!(info_equal.is_test);
+    assert_eq!(
+        info_equal.repo,
+        format!(
+            "{}/{}",
+            option_env!("AETHER_RELEASE_OWNER").unwrap_or("michelegoku3"),
+            option_env!("AETHER_RELEASE_NAME").unwrap_or("Aether")
+        )
+    );
 
     // When the local version is older (1.0.3), update_available must be true
     let info_older =

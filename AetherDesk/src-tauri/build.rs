@@ -1,4 +1,26 @@
 fn main() {
+    // Which GitHub repo the self-updater points at. Forks set this before
+    // `tauri build`; unset means upstream (michelegoku3/Aether), so upstream's
+    // binary is unchanged.
+    if let Ok(owner) = std::env::var("AETHER_RELEASE_OWNER") {
+        let trimmed = owner.trim();
+        assert!(
+            !trimmed.is_empty(),
+            "AETHER_RELEASE_OWNER is set but empty; set it to owner/repo or leave it unset"
+        );
+        println!("cargo:rustc-env=AETHER_RELEASE_OWNER={trimmed}");
+    }
+    if let Ok(name) = std::env::var("AETHER_RELEASE_NAME") {
+        let trimmed = name.trim();
+        assert!(
+            !trimmed.is_empty(),
+            "AETHER_RELEASE_NAME is set but empty; set it to the repo name or leave it unset"
+        );
+        println!("cargo:rustc-env=AETHER_RELEASE_NAME={trimmed}");
+    }
+    println!("cargo:rerun-if-env-changed=AETHER_RELEASE_OWNER");
+    println!("cargo:rerun-if-env-changed=AETHER_RELEASE_NAME");
+
     #[cfg(target_os = "windows")]
     {
         // AetherDesk writes inside the Steam folder (localconfig.vdf,

@@ -6,10 +6,49 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::Notify;
 
-const RELEASES_API_URL: &str =
-    "https://api.github.com/repos/michelegoku3/Aether/releases?per_page=100";
-const RELEASES_ATOM_URL: &str = "https://github.com/michelegoku3/Aether/releases.atom";
-const REPO_OWNER: &str = "michelegoku3";
+/// Release repo this build points at.
+///
+/// Read once: the env var is set for the process's whole life (a build script,
+/// `setx`, or the environment of the spawned apply/updater process), and the
+/// lookup cache below is keyed by URL — reading it per call would invite a
+/// mid-session flip that silently splits the cache.
+fn repo_owner() -> &'static str {
+    static OWNER: OnceLock<String> = OnceLock::new();
+    OWNER.get_or_init(|| {
+        option_env!("AETHER_RELEASE_OWNER")
+            .unwrap_or(REPO_OWNER_DEFAULT)
+            .to_string()
+    })
+    .as_str()
+}
+
+fn repo_name() -> &'static str {
+    static NAME: OnceLock<String> = OnceLock::new();
+    NAME.get_or_init(|| {
+        option_env!("AETHER_RELEASE_NAME")
+            .unwrap_or(REPO_NAME)
+            .to_string()
+    })
+    .as_str()
+}
+
+fn releases_api_url() -> String {
+    format!(
+        "https://api.github.com/repos/{}/{}/releases?per_page=100",
+        repo_owner(),
+        repo_name()
+    )
+}
+
+fn releases_atom_url() -> String {
+    format!(
+        "https://github.com/{}/{}/releases.atom",
+        repo_owner(),
+        repo_name()
+    )
+}
+
+const REPO_OWNER_DEFAULT: &str = "michelegoku3";
 const REPO_NAME: &str = "Aether";
 const USER_AGENT: &str = "AetherDesk-Updater";
 
@@ -48,6 +87,8 @@ pub struct ComponentUpdateInfo {
     pub is_test: bool,
     pub release_url: String,
     pub notes: String,
+    /// `owner/repo` this build checks, so the UI can name the fork it updates from.
+    pub repo: String,
 }
 
 /// The single definition of "this channel has no release" for the REST path.
@@ -582,13 +623,13 @@ impl GithubReleaseManager {
         crate::desk_log_info!(
             "updater",
             "GET {} (ETag: {})",
-            RELEASES_API_URL,
+            releases_api_url(),
             cached_etag.as_deref().unwrap_or("none")
         );
 
         let mut req = self
             .client
-            .get(RELEASES_API_URL)
+            .get(releases_api_url())
             .header("User-Agent", USER_AGENT)
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28");
@@ -687,11 +728,11 @@ impl GithubReleaseManager {
         crate::desk_log_info!(
             "updater",
             "GET {} (public fallback, no API)",
-            RELEASES_ATOM_URL
+            releases_atom_url()
         );
         let atom = self
             .client
-            .get(RELEASES_ATOM_URL)
+            .get(releases_atom_url())
             .header("User-Agent", USER_AGENT)
             .send()
             .await
@@ -725,7 +766,9 @@ impl GithubReleaseManager {
 
         let html_url = format!(
             "https://github.com/{}/{}/releases/tag/{}",
-            REPO_OWNER, REPO_NAME, tag_name
+            repo_owner(),
+            repo_name(),
+            tag_name
         );
         let assets = Self::conventional_assets(&tag_name);
         crate::desk_log_info!(
@@ -751,8 +794,8 @@ impl GithubReleaseManager {
     pub fn release_tags_from_atom(atom: &str) -> Vec<String> {
         let Ok(re) = Regex::new(&format!(
             r#"(?:https://github\.com)?/{}/{}/releases/tag/([^"'<>?\s]+)"#,
-            regex::escape(REPO_OWNER),
-            regex::escape(REPO_NAME)
+            regex::escape(repo_owner()),
+            regex::escape(repo_name())
         )) else {
             return Vec::new();
         };
@@ -783,12 +826,20 @@ impl GithubReleaseManager {
         assets
     }
 
+    /// Where this build fetches releases from, for log lines and the settings UI.
+    pub fn release_repo_label() -> String {
+        format!("{}/{}", repo_owner(), repo_name())
+    }
+
     fn download_asset(name: &str, tag_name: &str) -> GithubAsset {
         GithubAsset {
             name: name.to_string(),
             browser_download_url: format!(
                 "https://github.com/{}/{}/releases/download/{}/{}",
-                REPO_OWNER, REPO_NAME, tag_name, name
+                repo_owner(),
+                repo_name(),
+                tag_name,
+                name
             ),
         }
     }
@@ -886,6 +937,7 @@ impl GithubReleaseManager {
             is_test: Self::is_test_tag(&release.tag_name),
             release_url: release.html_url.clone().unwrap_or_default(),
             notes: release.body.clone().unwrap_or_default(),
+            repo: Self::release_repo_label(),
         }
     }
 
@@ -903,6 +955,7 @@ impl GithubReleaseManager {
             is_test: true,
             release_url: release.html_url.clone().unwrap_or_default(),
             notes: release.body.clone().unwrap_or_default(),
+            repo: Self::release_repo_label(),
         }
     }
 }
