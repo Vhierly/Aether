@@ -63,26 +63,32 @@ fn test_component_version_strips_test_prefix() {
 
 #[test]
 fn test_atom_and_html_tag_parsing() {
-    let owner = GithubReleaseManager::release_repo_label().replace('/', "/");
+    use crate::updater::github::test_repo;
+    let repo = test_repo("forker", "Aether");
     let atom = format!(
         r#"
         <feed>
           <entry>
-            <link rel="alternate" href="https://github.com/{owner}/releases/tag/desk-1.0.4"/>
+            <link rel="alternate" href="https://github.com/{}/{}/releases/tag/desk-1.0.4"/>
           </entry>
           <entry>
             <id>tag:github.com,2008:Repository/1305584107/dll-0.9.8</id>
-            <link href="https://github.com/{owner}/releases/tag/dll-0.9.8"/>
+            <link href="https://github.com/{}/{}/releases/tag/dll-0.9.8"/>
           </entry>
         </feed>
-    "#
+    "#,
+        repo.owner, repo.name, repo.owner, repo.name
     );
-    let tags = GithubReleaseManager::release_tags_from_atom(&atom);
+    let tags = GithubReleaseManager::release_tags_from_atom(&atom, repo);
     assert!(tags.contains(&"desk-1.0.4".to_string()));
     assert!(tags.contains(&"dll-0.9.8".to_string()));
 
-    let html = format!(r#"<a href="/{owner}/releases/tag/tdesk-1.0.5">tdesk-1.0.5</a>"#);
-    let html_tags = GithubReleaseManager::release_tags_from_atom(&html);
+    // A foreign repo's tags must not be picked up.
+    let foreign = atom.replace(&format!("{}/{}", repo.owner, repo.name), "someoneelse/Aether");
+    assert!(GithubReleaseManager::release_tags_from_atom(&foreign, repo).is_empty());
+
+    let html = format!(r#"<a href="/{}/{}/releases/tag/tdesk-1.0.5">tdesk-1.0.5</a>"#, repo.owner, repo.name);
+    let html_tags = GithubReleaseManager::release_tags_from_atom(&html, repo);
     assert_eq!(html_tags, vec!["tdesk-1.0.5".to_string()]);
 }
 
@@ -100,21 +106,47 @@ fn test_release_repo_label_defaults_to_upstream() {
 }
 
 #[test]
+fn test_dll_channel_keeps_upstream_when_only_desk_is_overridden() {
+    use crate::updater::github::{dll_repo, test_repo};
+
+    // The fork build sets AETHER_RELEASE_* only; the DLL channel must still
+    // read upstream, which is where the AetherDLL releases live.
+    let expected_dll = test_repo(
+        option_env!("AETHER_DLL_RELEASE_OWNER").unwrap_or("michelegoku3"),
+        option_env!("AETHER_DLL_RELEASE_NAME").unwrap_or("Aether"),
+    );
+    assert_eq!(dll_repo(), expected_dll);
+
+    // And it must not silently follow a desk-only override.
+    let desk = test_repo(
+        option_env!("AETHER_RELEASE_OWNER").unwrap_or("michelegoku3"),
+        option_env!("AETHER_RELEASE_NAME").unwrap_or("Aether"),
+    );
+    let dll_env_set = option_env!("AETHER_DLL_RELEASE_OWNER").is_some();
+    if !dll_env_set {
+        assert_eq!(dll_repo(), test_repo("michelegoku3", "Aether"));
+        let _ = desk;
+    }
+}
+
+#[test]
 fn test_conventional_download_urls_do_not_use_api() {
-    let desk = GithubReleaseManager::conventional_assets("desk-1.0.4");
+    use crate::updater::github::test_repo;
+    let desk_repo = test_repo("forker", "Aether");
+    let dll_repo = test_repo("michelegoku3", "Aether");
+
+    let desk = GithubReleaseManager::conventional_assets("desk-1.0.4", desk_repo);
     assert!(desk.iter().any(|asset| {
         asset.name == "AetherDesk-1.0.4.zip"
             && asset.browser_download_url
-                == format!(
-                    "https://github.com/{}/Aether/releases/download/desk-1.0.4/AetherDesk-1.0.4.zip",
-                    GithubReleaseManager::release_repo_label().split('/').next().unwrap()
-                )
+                == "https://github.com/forker/Aether/releases/download/desk-1.0.4/AetherDesk-1.0.4.zip"
     }));
 
-    let dll = GithubReleaseManager::conventional_assets("dll-0.9.8");
+    let dll = GithubReleaseManager::conventional_assets("dll-0.9.8", dll_repo);
     assert!(dll.iter().any(|asset| {
         asset.name == "AetherDLL-0.9.8.zip"
-            && asset.browser_download_url.ends_with("/releases/download/dll-0.9.8/AetherDLL-0.9.8.zip")
+            && asset.browser_download_url
+                == "https://github.com/michelegoku3/Aether/releases/download/dll-0.9.8/AetherDLL-0.9.8.zip"
     }));
 }
 

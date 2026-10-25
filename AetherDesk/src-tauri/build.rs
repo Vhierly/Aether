@@ -1,25 +1,28 @@
 fn main() {
-    // Which GitHub repo the self-updater points at. Forks set this before
+    // Which GitHub repos the self-updater points at. Forks set these before
     // `tauri build`; unset means upstream (michelegoku3/Aether), so upstream's
     // binary is unchanged.
-    if let Ok(owner) = std::env::var("AETHER_RELEASE_OWNER") {
-        let trimmed = owner.trim();
-        assert!(
-            !trimmed.is_empty(),
-            "AETHER_RELEASE_OWNER is set but empty; set it to owner/repo or leave it unset"
-        );
-        println!("cargo:rustc-env=AETHER_RELEASE_OWNER={trimmed}");
+    //
+    // AetherDesk and AetherDLL are separate: a fork publishing its own Desk
+    // builds still takes the shared DLL payload from upstream, so
+    // AETHER_DLL_RELEASE_* defaults to upstream and is left unset by forks.
+    let env_pairs = [
+        "AETHER_RELEASE_OWNER",
+        "AETHER_RELEASE_NAME",
+        "AETHER_DLL_RELEASE_OWNER",
+        "AETHER_DLL_RELEASE_NAME",
+    ];
+    for key in env_pairs {
+        if let Ok(value) = std::env::var(key) {
+            let trimmed = value.trim();
+            assert!(
+                !trimmed.is_empty(),
+                "{key} is set but empty; set it to the value or leave it unset"
+            );
+            println!("cargo:rustc-env={key}={trimmed}");
+        }
+        println!("cargo:rerun-if-env-changed={key}");
     }
-    if let Ok(name) = std::env::var("AETHER_RELEASE_NAME") {
-        let trimmed = name.trim();
-        assert!(
-            !trimmed.is_empty(),
-            "AETHER_RELEASE_NAME is set but empty; set it to the repo name or leave it unset"
-        );
-        println!("cargo:rustc-env=AETHER_RELEASE_NAME={trimmed}");
-    }
-    println!("cargo:rerun-if-env-changed=AETHER_RELEASE_OWNER");
-    println!("cargo:rerun-if-env-changed=AETHER_RELEASE_NAME");
 
     #[cfg(target_os = "windows")]
     {

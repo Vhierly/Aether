@@ -6,46 +6,78 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::Notify;
 
-/// Release repo this build points at.
+/// Which GitHub repo a channel reads its releases from.
 ///
+/// Desk and DLL are separate on purpose: a fork publishes its own AetherDesk
+/// builds but still takes the shared AetherDLL payload from upstream, so one
+/// override must not drag the other channel along with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RepoSpec {
+    pub(crate) owner: &'static str,
+    pub(crate) name: &'static str,
+}
+
+impl RepoSpec {
+    fn label(self) -> String {
+        format!("{}/{}", self.owner, self.name)
+    }
+
+    fn api_url(self) -> String {
+        format!(
+            "https://api.github.com/repos/{}/{}/releases?per_page=100",
+            self.owner, self.name
+        )
+    }
+
+    fn atom_url(self) -> String {
+        format!(
+            "https://github.com/{}/{}/releases.atom",
+            self.owner, self.name
+        )
+    }
+
+    fn tag_url(self, tag: &str) -> String {
+        format!(
+            "https://github.com/{}/{}/releases/tag/{}",
+            self.owner, self.name, tag
+        )
+    }
+
+    fn download_url(self, tag: &str, asset: &str) -> String {
+        format!(
+            "https://github.com/{}/{}/releases/download/{}/{}",
+            self.owner, self.name, tag, asset
+        )
+    }
+}
+
 /// Read once: the env var is set for the process's whole life (a build script,
 /// `setx`, or the environment of the spawned apply/updater process), and the
-/// lookup cache below is keyed by URL — reading it per call would invite a
-/// mid-session flip that silently splits the cache.
-fn repo_owner() -> &'static str {
-    static OWNER: OnceLock<String> = OnceLock::new();
-    OWNER.get_or_init(|| {
-        option_env!("AETHER_RELEASE_OWNER")
-            .unwrap_or(REPO_OWNER_DEFAULT)
-            .to_string()
+/// caches below are keyed by repo — reading it per call would invite a
+/// mid-session flip that silently splits them.
+fn desk_repo() -> RepoSpec {
+    static REPO: OnceLock<RepoSpec> = OnceLock::new();
+    *REPO.get_or_init(|| RepoSpec {
+        owner: option_env!("AETHER_RELEASE_OWNER").unwrap_or(REPO_OWNER_DEFAULT),
+        name: option_env!("AETHER_RELEASE_NAME").unwrap_or(REPO_NAME),
     })
-    .as_str()
 }
 
-fn repo_name() -> &'static str {
-    static NAME: OnceLock<String> = OnceLock::new();
-    NAME.get_or_init(|| {
-        option_env!("AETHER_RELEASE_NAME")
-            .unwrap_or(REPO_NAME)
-            .to_string()
+/// The DLL channel defaults to upstream: a fork's AetherDesk build must not
+/// silently stop receiving AetherDLL updates because the fork has no `dll-*`
+/// release of its own.
+pub(crate) fn dll_repo() -> RepoSpec {
+    static REPO: OnceLock<RepoSpec> = OnceLock::new();
+    *REPO.get_or_init(|| RepoSpec {
+        owner: option_env!("AETHER_DLL_RELEASE_OWNER").unwrap_or(REPO_OWNER_DEFAULT),
+        name: option_env!("AETHER_DLL_RELEASE_NAME").unwrap_or(REPO_NAME),
     })
-    .as_str()
 }
 
-fn releases_api_url() -> String {
-    format!(
-        "https://api.github.com/repos/{}/{}/releases?per_page=100",
-        repo_owner(),
-        repo_name()
-    )
-}
-
-fn releases_atom_url() -> String {
-    format!(
-        "https://github.com/{}/{}/releases.atom",
-        repo_owner(),
-        repo_name()
-    )
+/// Test-only: build a repo spec for a literal owner/name pair.
+#[cfg(test)]
+pub(crate) fn test_repo(owner: &'static str, name: &'static str) -> RepoSpec {
+    RepoSpec { owner, name }
 }
 
 const REPO_OWNER_DEFAULT: &str = "michelegoku3";
@@ -283,9 +315,11 @@ struct ReleasesApiEtagCache {
     saved_at: Instant,
 }
 
-fn releases_api_etag_cache() -> &'static Mutex<Option<ReleasesApiEtagCache>> {
-    static CACHE: OnceLock<Mutex<Option<ReleasesApiEtagCache>>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(None))
+/// Keyed by repo: the desk and DLL channels may point at different repos, and
+/// an ETag is only valid for the URL it came from.
+fn releases_api_etag_cache() -> &'static Mutex<HashMap<String, ReleasesApiEtagCache>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, ReleasesApiEtagCache>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 pub struct GithubReleaseManager {
@@ -408,8 +442,9 @@ impl GithubReleaseManager {
         &self,
         prefixes: &[&str],
         origin: &str,
+        repo: RepoSpec,
     ) -> Result<GithubRelease, String> {
-        let key = prefixes.join(",");
+        let key = format!("{}|{}", repo.label(), prefixes.join(","));
         let slot = lookup_slot(&key);
 
         if let Some(cached) = slot.fresh() {
@@ -458,11 +493,12 @@ impl GithubReleaseManager {
 
         crate::desk_log_info!(
             "updater",
-            "Looking up latest release for prefixes {:?} via GitHub REST API (origin={})",
+            "Looking up latest release for {:?} via GitHub REST API (origin={}, repo={})",
             prefixes,
-            origin
+            origin,
+            repo.label()
         );
-        let result = self.lookup_with_fallback(prefixes, origin).await;
+        let result = self.lookup_with_fallback(prefixes, origin, repo).await;
         // Keep the session memo of "this test channel is empty" in sync, so a
         // probe nobody can answer stops costing API requests (F7).
         if let Some(channel) = TestChannel::from_prefixes(prefixes) {
@@ -481,8 +517,9 @@ impl GithubReleaseManager {
         &self,
         prefixes: &[&str],
         origin: &str,
+        repo: RepoSpec,
     ) -> Result<GithubRelease, String> {
-        match self.fetch_latest_by_prefix_api(prefixes).await {
+        match self.fetch_latest_by_prefix_api(prefixes, repo).await {
             Ok(release) => {
                 crate::desk_log_info!(
                     "updater",
@@ -504,7 +541,7 @@ impl GithubReleaseManager {
                     api_error,
                     origin
                 );
-                match self.fetch_latest_by_prefix_public_fallback(prefixes).await {
+                match self.fetch_latest_by_prefix_public_fallback(prefixes, repo).await {
                     Ok(release) => {
                         crate::desk_log_info!(
                             "updater",
@@ -549,7 +586,7 @@ impl GithubReleaseManager {
                     api_error,
                     origin
                 );
-                match self.fetch_latest_by_prefix_public_fallback(prefixes).await {
+                match self.fetch_latest_by_prefix_public_fallback(prefixes, repo).await {
                     Ok(release) => {
                         crate::desk_log_info!(
                             "updater",
@@ -580,8 +617,12 @@ impl GithubReleaseManager {
         }
     }
 
-    async fn fetch_latest_by_prefix_api(&self, prefixes: &[&str]) -> Result<GithubRelease, String> {
-        let releases = self.fetch_releases_api().await?;
+    async fn fetch_latest_by_prefix_api(
+        &self,
+        prefixes: &[&str],
+        repo: RepoSpec,
+    ) -> Result<GithubRelease, String> {
+        let releases = self.fetch_releases_api(repo).await?;
         crate::desk_log_debug!(
             "updater",
             "GitHub API returned {} release(s); filtering prefixes {:?}",
@@ -614,22 +655,23 @@ impl GithubReleaseManager {
             .ok_or_else(|| no_api_release_error(prefixes))
     }
 
-    async fn fetch_releases_api(&self) -> Result<Vec<GithubRelease>, String> {
+    async fn fetch_releases_api(&self, repo: RepoSpec) -> Result<Vec<GithubRelease>, String> {
+        let cache_key = repo.label();
         let cached_etag = releases_api_etag_cache()
             .lock()
             .ok()
-            .and_then(|guard| guard.as_ref().and_then(|c| c.etag.clone()));
+            .and_then(|guard| guard.get(&cache_key).and_then(|c| c.etag.clone()));
 
         crate::desk_log_info!(
             "updater",
             "GET {} (ETag: {})",
-            releases_api_url(),
+            repo.api_url(),
             cached_etag.as_deref().unwrap_or("none")
         );
 
         let mut req = self
             .client
-            .get(releases_api_url())
+            .get(repo.api_url())
             .header("User-Agent", USER_AGENT)
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28");
@@ -658,7 +700,7 @@ impl GithubReleaseManager {
 
         if status == reqwest::StatusCode::NOT_MODIFIED {
             if let Ok(guard) = releases_api_etag_cache().lock() {
-                if let Some(ref cache) = *guard {
+                if let Some(cache) = guard.get(&cache_key) {
                     crate::desk_log_info!(
                         "updater",
                         "GitHub API 304 Not Modified — reused {} cached releases without consuming rate limit",
@@ -706,15 +748,18 @@ impl GithubReleaseManager {
             .map_err(|e| format!("Failed to parse GitHub releases JSON: {}", e))?;
 
         if let Ok(mut guard) = releases_api_etag_cache().lock() {
-            *guard = Some(ReleasesApiEtagCache {
-                etag: if response_etag != "unknown" {
-                    Some(response_etag)
-                } else {
-                    None
+            guard.insert(
+                cache_key,
+                ReleasesApiEtagCache {
+                    etag: if response_etag != "unknown" {
+                        Some(response_etag)
+                    } else {
+                        None
+                    },
+                    releases: releases.clone(),
+                    saved_at: Instant::now(),
                 },
-                releases: releases.clone(),
-                saved_at: Instant::now(),
-            });
+            );
         }
 
         Ok(releases)
@@ -724,15 +769,16 @@ impl GithubReleaseManager {
     async fn fetch_latest_by_prefix_public_fallback(
         &self,
         prefixes: &[&str],
+        repo: RepoSpec,
     ) -> Result<GithubRelease, String> {
         crate::desk_log_info!(
             "updater",
             "GET {} (public fallback, no API)",
-            releases_atom_url()
+            repo.atom_url()
         );
         let atom = self
             .client
-            .get(releases_atom_url())
+            .get(repo.atom_url())
             .header("User-Agent", USER_AGENT)
             .send()
             .await
@@ -751,7 +797,7 @@ impl GithubReleaseManager {
             .text()
             .await
             .map_err(|e| format!("Failed to read GitHub releases.atom: {}", e))?;
-        let tags = Self::release_tags_from_atom(&atom_text);
+        let tags = Self::release_tags_from_atom(&atom_text, repo);
         crate::desk_log_info!(
             "updater",
             "releases.atom parsed {} tag(s): {}",
@@ -764,13 +810,8 @@ impl GithubReleaseManager {
             .max_by(|a, b| Self::compare_version_tags(a, b))
             .ok_or_else(|| no_atom_release_error(prefixes))?;
 
-        let html_url = format!(
-            "https://github.com/{}/{}/releases/tag/{}",
-            repo_owner(),
-            repo_name(),
-            tag_name
-        );
-        let assets = Self::conventional_assets(&tag_name);
+        let html_url = repo.tag_url(&tag_name);
+        let assets = Self::conventional_assets(&tag_name, repo);
         crate::desk_log_info!(
             "updater",
             "Fallback constructed {} conventional asset URL(s) for {}",
@@ -791,11 +832,11 @@ impl GithubReleaseManager {
         })
     }
 
-    pub fn release_tags_from_atom(atom: &str) -> Vec<String> {
+    pub fn release_tags_from_atom(atom: &str, repo: RepoSpec) -> Vec<String> {
         let Ok(re) = Regex::new(&format!(
             r#"(?:https://github\.com)?/{}/{}/releases/tag/([^"'<>?\s]+)"#,
-            regex::escape(repo_owner()),
-            regex::escape(repo_name())
+            regex::escape(repo.owner),
+            regex::escape(repo.name)
         )) else {
             return Vec::new();
         };
@@ -810,50 +851,45 @@ impl GithubReleaseManager {
     }
 
     /// Known CI asset names from `.github/workflows/build.yml`.
-    pub fn conventional_assets(tag_name: &str) -> Vec<GithubAsset> {
+    pub fn conventional_assets(tag_name: &str, repo: RepoSpec) -> Vec<GithubAsset> {
         let version = Self::component_version_from_tag(tag_name);
         let lower = tag_name.to_ascii_lowercase();
         let mut assets = Vec::new();
 
         if lower.starts_with("tdesk-") || lower.starts_with("desk-") {
             let name = format!("AetherDesk-{}.zip", version);
-            assets.push(Self::download_asset(&name, tag_name));
+            assets.push(Self::download_asset(&name, tag_name, repo));
         } else if lower.starts_with("tdll-") || lower.starts_with("dll-") {
             let name = format!("AetherDLL-{}.zip", version);
-            assets.push(Self::download_asset(&name, tag_name));
+            assets.push(Self::download_asset(&name, tag_name, repo));
         }
 
         assets
     }
 
-    /// Where this build fetches releases from, for log lines and the settings UI.
+    /// Where this build fetches AetherDesk releases from, for log lines and the
+    /// settings UI. The DLL channel has its own repo; see [`dll_repo`].
     pub fn release_repo_label() -> String {
-        format!("{}/{}", repo_owner(), repo_name())
+        desk_repo().label()
     }
 
-    fn download_asset(name: &str, tag_name: &str) -> GithubAsset {
+    fn download_asset(name: &str, tag_name: &str, repo: RepoSpec) -> GithubAsset {
         GithubAsset {
             name: name.to_string(),
-            browser_download_url: format!(
-                "https://github.com/{}/{}/releases/download/{}/{}",
-                repo_owner(),
-                repo_name(),
-                tag_name,
-                name
-            ),
+            browser_download_url: repo.download_url(tag_name, name),
         }
     }
 
     pub async fn fetch_latest_dll_release(&self, origin: &str) -> Result<(String, String), String> {
         let release = self
-            .fetch_latest_by_prefix_tagged(DLL_TAG_PREFIXES, origin)
+            .fetch_latest_by_prefix_tagged(DLL_TAG_PREFIXES, origin, dll_repo())
             .await?;
         let url = Self::dll_zip_url(&release)?;
         Ok((release.tag_name, url))
     }
 
     pub async fn fetch_latest_desk_release(&self, origin: &str) -> Result<GithubRelease, String> {
-        self.fetch_latest_by_prefix_tagged(DESK_TAG_PREFIXES, origin)
+        self.fetch_latest_by_prefix_tagged(DESK_TAG_PREFIXES, origin, desk_repo())
             .await
     }
 
@@ -861,7 +897,7 @@ impl GithubReleaseManager {
         &self,
         origin: &str,
     ) -> Result<GithubRelease, String> {
-        self.fetch_latest_by_prefix_tagged(TDESK_TAG_PREFIXES, origin)
+        self.fetch_latest_by_prefix_tagged(TDESK_TAG_PREFIXES, origin, desk_repo())
             .await
     }
 
@@ -870,7 +906,7 @@ impl GithubReleaseManager {
         origin: &str,
     ) -> Result<(String, String), String> {
         let release = self
-            .fetch_latest_by_prefix_tagged(TDLL_TAG_PREFIXES, origin)
+            .fetch_latest_by_prefix_tagged(TDLL_TAG_PREFIXES, origin, dll_repo())
             .await?;
         let url = Self::dll_zip_url(&release)?;
         Ok((release.tag_name, url))
