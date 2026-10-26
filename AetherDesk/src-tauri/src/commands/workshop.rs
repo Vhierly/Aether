@@ -568,6 +568,26 @@ pub struct WorkshopItemReport {
     pub content_missing: bool,
 }
 
+/// Adds one sync result to the run totals.
+///
+/// `content_missing` is independent of the origin: a generated or cached
+/// manifest still leaves the item unplayable when Steam's content folder is
+/// absent, so every origin must feed the counter the UI reports.
+fn count_origin(report: &mut WorkshopSyncReport, origin: &SyncOrigin, content_missing: bool) {
+    match origin {
+        SyncOrigin::Generated { .. } => report.generated += 1,
+        SyncOrigin::Cached { .. } => report.restored_from_cache += 1,
+        SyncOrigin::AlreadyLocal { .. } => {
+            if !content_missing {
+                report.already_local += 1;
+            }
+        }
+    }
+    if content_missing {
+        report.content_missing += 1;
+    }
+}
+
 /// Scans Steam's appworkshop ACF files and proactively stages missing
 /// Workshop manifests through authenticated Hubcap. The coordinator invokes it
 /// only after an ACF fingerprint change; exact local files and validated caches
@@ -697,17 +717,7 @@ pub async fn sync_hubcap_workshop_manifests(
                     } => (*content_present, *content_deferred),
                 };
                 let content_missing = !content_present;
-                match origin {
-                    SyncOrigin::Generated { .. } => report.generated += 1,
-                    SyncOrigin::Cached { .. } => report.restored_from_cache += 1,
-                    SyncOrigin::AlreadyLocal { .. } => {
-                        if content_present {
-                            report.already_local += 1;
-                        } else {
-                            report.content_missing += 1;
-                        }
-                    }
-                }
+                count_origin(&mut report, &origin, content_missing);
                 if content_deferred {
                     report.deferred += 1;
                 }
@@ -833,4 +843,58 @@ pub async fn generate_hubcap_workshop_manifest(
         started.elapsed().as_millis()
     );
     Ok(path.display().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn origin(kind: &str, content_present: bool) -> SyncOrigin {
+        match kind {
+            "generated" => SyncOrigin::Generated {
+                content_present,
+                content_deferred: false,
+            },
+            "cached" => SyncOrigin::Cached {
+                content_present,
+                content_deferred: false,
+            },
+            "already_local" => SyncOrigin::AlreadyLocal {
+                content_present,
+                content_deferred: false,
+            },
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn content_missing_is_counted_for_every_origin() {
+        for kind in ["generated", "cached", "already_local"] {
+            let mut report = WorkshopSyncReport::default();
+            count_origin(&mut report, &origin(kind, false), true);
+            assert_eq!(
+                report.content_missing, 1,
+                "{kind} without content must be reported as missing"
+            );
+            assert_eq!(report.already_local, 0);
+        }
+    }
+
+    #[test]
+    fn content_present_is_not_missing_and_keeps_origin_counts() {
+        let mut generated = WorkshopSyncReport::default();
+        count_origin(&mut generated, &origin("generated", true), false);
+        assert_eq!(generated.generated, 1);
+        assert_eq!(generated.content_missing, 0);
+
+        let mut cached = WorkshopSyncReport::default();
+        count_origin(&mut cached, &origin("cached", true), false);
+        assert_eq!(cached.restored_from_cache, 1);
+        assert_eq!(cached.content_missing, 0);
+
+        let mut local = WorkshopSyncReport::default();
+        count_origin(&mut local, &origin("already_local", true), false);
+        assert_eq!(local.already_local, 1);
+        assert_eq!(local.content_missing, 0);
+    }
 }
