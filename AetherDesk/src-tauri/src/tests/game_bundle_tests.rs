@@ -171,3 +171,44 @@ fn write_game_bundle_contains_lua_and_manifests_and_overwrites() {
         b"generated-bytes"
     );
 }
+
+#[test]
+fn failed_bundle_export_keeps_the_previous_zip_and_leaves_no_temp() {
+    let downloads = tempfile::tempdir().expect("temp downloads");
+    let zip_name = bundle_zip_name("Test Game", 42);
+    let lua = b"-- pinned lua\n";
+
+    let good = vec![BundleManifest {
+        file_name: "444_4004.manifest".to_string(),
+        source: BundleSource::Generated(b"old-bytes".to_vec()),
+    }];
+    let previous =
+        write_game_bundle(downloads.path(), &zip_name, "42.lua", lua, &good).expect("first export");
+    let previous_bytes = std::fs::read(&previous).expect("read previous bundle");
+
+    let broken = vec![BundleManifest {
+        file_name: "444_4004.manifest".to_string(),
+        source: BundleSource::Local(downloads.path().join("missing.manifest")),
+    }];
+    let error = write_game_bundle(downloads.path(), &zip_name, "42.lua", lua, &broken)
+        .expect_err("an unreadable manifest must fail the export");
+    assert!(
+        error.contains("Failed to read manifest"),
+        "unexpected error: {error}"
+    );
+
+    assert_eq!(
+        std::fs::read(&previous).expect("previous bundle must survive a failed export"),
+        previous_bytes
+    );
+    let temp_files: Vec<String> = std::fs::read_dir(downloads.path())
+        .expect("list downloads")
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".tmp"))
+        .collect();
+    assert!(
+        temp_files.is_empty(),
+        "staged temp file must be cleaned up: {temp_files:?}"
+    );
+}

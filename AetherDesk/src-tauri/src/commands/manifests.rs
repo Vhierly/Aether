@@ -282,53 +282,71 @@ pub(crate) fn write_game_bundle(
         )
     })?;
     let zip_path = downloads_dir.join(zip_name);
-    if zip_path.exists() {
-        std::fs::remove_file(&zip_path).map_err(|error| {
+    // Stage next to the destination so the final rename stays on one
+    // filesystem, then replace the previous bundle in a single step. Writing
+    // directly to `zip_path` would destroy a good bundle when an export fails
+    // halfway (disk full, unreadable manifest).
+    static NEXT_BUNDLE_TEMP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let temp_path = downloads_dir.join(format!(
+        ".{zip_name}.{}-{}.tmp",
+        std::process::id(),
+        NEXT_BUNDLE_TEMP.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+
+    let staged = (|| -> Result<(), String> {
+        let file = std::fs::File::create(&temp_path).map_err(|error| {
             format!(
-                "Failed to replace the previous bundle {}: {}",
+                "Failed to create ZIP bundle {}: {}",
                 zip_path.display(),
                 error
             )
         })?;
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+
+        // Lua first: it is the file that names the pins the rest of the archive
+        // satisfies.
+        zip.start_file(lua_entry, options)
+            .map_err(|error| format!("Failed to add {lua_entry} to the bundle: {error}"))?;
+        zip.write_all(lua_bytes)
+            .map_err(|error| format!("Failed to write {lua_entry} into the bundle: {error}"))?;
+
+        for manifest in manifests {
+            let file_name = &manifest.file_name;
+            let bytes = match &manifest.source {
+                BundleSource::Local(path) => std::fs::read(path).map_err(|error| {
+                    format!(
+                        "Failed to read manifest {} for the bundle: {}",
+                        path.display(),
+                        error
+                    )
+                })?,
+                BundleSource::Generated(bytes) => bytes.clone(),
+            };
+            zip.start_file(file_name, options)
+                .map_err(|error| format!("Failed to add {file_name} to the bundle: {error}"))?;
+            zip.write_all(&bytes)
+                .map_err(|error| format!("Failed to write {file_name} into the bundle: {error}"))?;
+        }
+
+        zip.finish()
+            .map_err(|error| format!("Failed to finalize {}: {}", zip_path.display(), error))?;
+        Ok(())
+    })();
+
+    if let Err(error) = staged {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(error);
     }
-    let file = std::fs::File::create(&zip_path).map_err(|error| {
-        format!(
-            "Failed to create ZIP bundle {}: {}",
+    if let Err(error) = std::fs::rename(&temp_path, &zip_path) {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(format!(
+            "Failed to replace the previous bundle {}: {}",
             zip_path.display(),
             error
-        )
-    })?;
-    let mut zip = zip::ZipWriter::new(file);
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
-
-    // Lua first: it is the file that names the pins the rest of the archive
-    // satisfies.
-    zip.start_file(lua_entry, options)
-        .map_err(|error| format!("Failed to add {lua_entry} to the bundle: {error}"))?;
-    zip.write_all(lua_bytes)
-        .map_err(|error| format!("Failed to write {lua_entry} into the bundle: {error}"))?;
-
-    for manifest in manifests {
-        let file_name = &manifest.file_name;
-        let bytes = match &manifest.source {
-            BundleSource::Local(path) => std::fs::read(path).map_err(|error| {
-                format!(
-                    "Failed to read manifest {} for the bundle: {}",
-                    path.display(),
-                    error
-                )
-            })?,
-            BundleSource::Generated(bytes) => bytes.clone(),
-        };
-        zip.start_file(file_name, options)
-            .map_err(|error| format!("Failed to add {file_name} to the bundle: {error}"))?;
-        zip.write_all(&bytes)
-            .map_err(|error| format!("Failed to write {file_name} into the bundle: {error}"))?;
+        ));
     }
-
-    zip.finish()
-        .map_err(|error| format!("Failed to finalize {}: {}", zip_path.display(), error))?;
     Ok(zip_path)
 }
 
