@@ -684,9 +684,11 @@ pub async fn sync_hubcap_workshop_manifests(
         if needs_remote {
             if remote_attempts >= WORKSHOP_MAX_GENERATIONS_PER_RUN {
                 report.deferred += 1;
-                report
-                    .items
-                    .push(item_report(WorkshopItemStatus::Deferred, Some(WorkshopItemReason::GenerationCap), false));
+                report.items.push(item_report(
+                    WorkshopItemStatus::Deferred,
+                    Some(WorkshopItemReason::GenerationCap),
+                    false,
+                ));
                 continue;
             }
             remote_attempts += 1;
@@ -730,7 +732,9 @@ pub async fn sync_hubcap_workshop_manifests(
                 } else {
                     (WorkshopItemStatus::Ready, None)
                 };
-                report.items.push(item_report(status, reason, content_missing));
+                report
+                    .items
+                    .push(item_report(status, reason, content_missing));
             }
             Err(error) => {
                 report.failed += 1;

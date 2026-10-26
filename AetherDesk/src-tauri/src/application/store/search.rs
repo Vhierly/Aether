@@ -254,7 +254,7 @@ pub struct CrackInfo {
 pub async fn check_crack_status_bulk(
     _app: &tauri::AppHandle,
     app_ids: Vec<u32>,
- ) -> Result<HashMap<u32, CrackInfo>, String> {
+) -> Result<HashMap<u32, CrackInfo>, String> {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -286,7 +286,10 @@ pub async fn check_crack_status_bulk(
             if let Some(entry) = obj.get(&id.to_string()) {
                 let ts = entry.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
                 if now.saturating_sub(ts) <= CACHE_TTL {
-                    let status = entry.get("status").and_then(|v| v.as_str()).map(String::from);
+                    let status = entry
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
                     if let Some(st) = status {
                         result.insert(*id, CrackInfo { status: st });
                         continue;
@@ -331,7 +334,12 @@ pub async fn check_crack_status_bulk(
                         .and_then(|s| s.parse::<u32>().ok());
                     let status = item.get("status").and_then(|v| v.as_str());
                     if let (Some(id), Some(st)) = (appid, status) {
-                        result.insert(id, CrackInfo { status: st.to_string() });
+                        result.insert(
+                            id,
+                            CrackInfo {
+                                status: st.to_string(),
+                            },
+                        );
                     }
                 }
             }
@@ -356,11 +364,13 @@ pub async fn check_crack_status_bulk(
         }
     }
     let stamped = serde_json::json!({"entries": entries});
-    let _ = fs::write(&cache_path, serde_json::to_string(&stamped).unwrap_or_default());
+    let _ = fs::write(
+        &cache_path,
+        serde_json::to_string(&stamped).unwrap_or_default(),
+    );
 
     Ok(result)
 }
-
 
 fn percent_encode(input: &str) -> String {
     let mut out = String::new();
@@ -450,7 +460,9 @@ pub async fn check_pc_drm_bulk(
             Err(_) => None,
         };
 
-        let Some(title) = title else { continue; };
+        let Some(title) = title else {
+            continue;
+        };
 
         // Fetch wikitext.
         let content_url = format!(
@@ -477,7 +489,9 @@ pub async fn check_pc_drm_bulk(
             Err(_) => None,
         };
 
-        let Some(wt) = wikitext else { continue; };
+        let Some(wt) = wikitext else {
+            continue;
+        };
         // Verify steam appid present to avoid wrong game.
         if !wt.contains(&id.to_string()) {
             continue;
@@ -492,7 +506,7 @@ pub async fn check_pc_drm_bulk(
                     "None".to_string()
                 } else {
                     // Take first DRM name (before comma or pipe).
-                    val.split(|c: char| c == ',' || c == '|')
+                    val.split([',', '|'])
                         .next()
                         .unwrap_or(val)
                         .trim()
@@ -507,7 +521,12 @@ pub async fn check_pc_drm_bulk(
 
         // Sanitize: only accept clean DRM names; skip messy values.
         let lower = drm.to_lowercase();
-        if lower.contains("team") || lower.contains("offline") || lower.contains("ffline") || lower.contains("=") || drm.len() > 30 {
+        if lower.contains("team")
+            || lower.contains("offline")
+            || lower.contains("ffline")
+            || lower.contains("=")
+            || drm.len() > 30
+        {
             continue;
         }
         result.insert(*id, drm);
@@ -525,14 +544,14 @@ pub async fn check_pc_drm_bulk(
     for (id, drm) in &result {
         // only cache newly fetched? cache all results present
         if need_fetch.iter().any(|(x, _)| x == id) {
-            obj.insert(
-                id.to_string(),
-                serde_json::json!({"drm": drm, "ts": now}),
-            );
+            obj.insert(id.to_string(), serde_json::json!({"drm": drm, "ts": now}));
         }
     }
     let stamped = serde_json::json!({"entries": entries});
-    let _ = fs::write(&cache_path, serde_json::to_string(&stamped).unwrap_or_default());
+    let _ = fs::write(
+        &cache_path,
+        serde_json::to_string(&stamped).unwrap_or_default(),
+    );
 
     Ok(result)
 }

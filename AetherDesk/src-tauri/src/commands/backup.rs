@@ -39,10 +39,20 @@ pub fn list_backup_games() -> Result<Vec<BackupGameSummary>, String> {
         let (history_count, manifest_count) = {
             let history_dir = lua_dir.join("history");
             let h = std::fs::read_dir(&history_dir)
-                .map(|rd| rd.flatten().filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("lua")).count())
+                .map(|rd| {
+                    rd.flatten()
+                        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("lua"))
+                        .count()
+                })
                 .unwrap_or(0);
             let m = std::fs::read_dir(&lua_dir)
-                .map(|rd| rd.flatten().filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("manifest")).count())
+                .map(|rd| {
+                    rd.flatten()
+                        .filter(|e| {
+                            e.path().extension().and_then(|x| x.to_str()) == Some("manifest")
+                        })
+                        .count()
+                })
                 .unwrap_or(0);
             (h, m)
         };

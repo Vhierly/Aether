@@ -1,4 +1,6 @@
-use crate::commands::home_links::{build_csrinru_url, build_gcw_url, build_ofme_url, build_xatab_url};
+use crate::commands::home_links::{
+    build_csrinru_url, build_gcw_url, build_ofme_url, build_xatab_url,
+};
 
 // Helper to extract query values for assertions without depending on private fns.
 fn extract_ofme_query(url: &str) -> String {

@@ -41,7 +41,10 @@ impl GenreDetector {
         }
     }
 
-    pub async fn detect_many(&self, app_ids: Vec<u32>) -> Result<HashMap<u32, Vec<String>>, String> {
+    pub async fn detect_many(
+        &self,
+        app_ids: Vec<u32>,
+    ) -> Result<HashMap<u32, Vec<String>>, String> {
         let mut cache = self.load_cache();
         let now = Self::now_unix();
 
@@ -116,7 +119,11 @@ impl GenreDetector {
                     .and_then(|g| g.as_array())
                     .map(|arr| {
                         arr.iter()
-                            .filter_map(|g| g.get("description").and_then(|d| d.as_str()).map(String::from))
+                            .filter_map(|g| {
+                                g.get("description")
+                                    .and_then(|d| d.as_str())
+                                    .map(String::from)
+                            })
                             .collect()
                     })
                     .unwrap_or_default()

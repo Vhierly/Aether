@@ -20,6 +20,11 @@ jobs:
     permissions:
       contents: write
     runs-on: windows-latest
+    env:
+      # This fork publishes its own desk-* releases. Without these, the built
+      # exe keeps checking upstream for AetherDesk updates.
+      AETHER_RELEASE_OWNER: Vhierly
+      AETHER_RELEASE_NAME: Aether
 
     steps:
       - name: Checkout Repository

@@ -183,7 +183,11 @@ impl OureverydayClient {
         let mut manifest_futures = Vec::new();
         for row in rows {
             let file_name = format!("{}_{}.manifest", row.app_id, row.manifest_id);
-            if package.manifest_files.iter().any(|file| file.file_name == file_name) {
+            if package
+                .manifest_files
+                .iter()
+                .any(|file| file.file_name == file_name)
+            {
                 continue;
             }
             let depot_id = row.app_id; // in LuaManifestRow, app_id holds the depot ID

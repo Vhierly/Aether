@@ -146,7 +146,11 @@ impl DrmDetector {
                     *app_id,
                     DenuvoCacheEntry {
                         has_denuvo: notice.to_lowercase().contains(DENUVO_MARKER),
-                        drm_notice: if notice.is_empty() { None } else { Some(notice.clone()) },
+                        drm_notice: if notice.is_empty() {
+                            None
+                        } else {
+                            Some(notice.clone())
+                        },
                         checked_at_unix: now,
                     },
                 );

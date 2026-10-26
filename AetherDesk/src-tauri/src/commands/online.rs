@@ -415,8 +415,8 @@ pub async fn check_uco2_bulk(
     app: tauri::AppHandle,
     app_ids: Vec<u32>,
 ) -> Result<std::collections::HashMap<u32, bool>, String> {
-    use crate::steam::library::SteamLibraryScanner;
     use crate::core::settings::load_settings;
+    use crate::steam::library::SteamLibraryScanner;
     use crate::steam::resolve::resolve_steam_path;
     use std::collections::HashMap;
     use std::fs;
@@ -433,12 +433,15 @@ pub async fn check_uco2_bulk(
     let mut need_fetch = true;
     if let Ok(content) = fs::read_to_string(&allowlist_path) {
         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
-            let ts = parsed.get("fetched_at").and_then(|v| v.as_u64()).unwrap_or(0);
+            let ts = parsed
+                .get("fetched_at")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
             if now.saturating_sub(ts) <= 24 * 60 * 60 {
                 if let Some(arr) = parsed.get("app_ids").and_then(|v| v.as_array()) {
                     for v in arr {
-                        if let Some(n) = v.as_u64() {
-                            allowlist.insert(n as u32);
+                        if let Some(app_id) = v.as_u64().and_then(|n| u32::try_from(n).ok()) {
+                            allowlist.insert(app_id);
                         }
                     }
                     need_fetch = false;
@@ -447,20 +450,34 @@ pub async fn check_uco2_bulk(
         }
     }
     if need_fetch {
-        if let Ok(client) = reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)).build() {
-            if let Ok(resp) = client.get("https://uco2list.iforgor.cc/api/games").send().await {
+        if let Ok(client) = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .build()
+        {
+            if let Ok(resp) = client
+                .get("https://uco2list.iforgor.cc/api/games")
+                .send()
+                .await
+            {
                 if let Ok(json) = resp.json::<serde_json::Value>().await {
                     if let Some(arr) = json.as_array() {
                         for item in arr {
-                            if let Some(n) = item.get("appId").and_then(|v| v.as_u64()) {
-                                allowlist.insert(n as u32);
+                            if let Some(app_id) = item
+                                .get("appId")
+                                .and_then(|v| v.as_u64())
+                                .and_then(|n| u32::try_from(n).ok())
+                            {
+                                allowlist.insert(app_id);
                             }
                         }
                         let stamped = serde_json::json!({
                             "fetched_at": now,
                             "app_ids": allowlist.iter().copied().collect::<Vec<_>>(),
                         });
-                        let _ = fs::write(&allowlist_path, serde_json::to_string(&stamped).unwrap_or_default());
+                        let _ = fs::write(
+                            &allowlist_path,
+                            serde_json::to_string(&stamped).unwrap_or_default(),
+                        );
                     }
                 }
             }
@@ -473,7 +490,10 @@ pub async fn check_uco2_bulk(
             Ok(root) => {
                 let scanner = SteamLibraryScanner::new(root);
                 let games = scanner.scan_installed_games();
-                games.into_iter().map(|g| (g.id, std::path::PathBuf::from(g.game_path))).collect()
+                games
+                    .into_iter()
+                    .map(|g| (g.id, std::path::PathBuf::from(g.game_path)))
+                    .collect()
             }
             Err(_) => std::collections::HashMap::new(),
         };

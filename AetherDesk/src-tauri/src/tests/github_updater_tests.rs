@@ -84,10 +84,16 @@ fn test_atom_and_html_tag_parsing() {
     assert!(tags.contains(&"dll-0.9.8".to_string()));
 
     // A foreign repo's tags must not be picked up.
-    let foreign = atom.replace(&format!("{}/{}", repo.owner, repo.name), "someoneelse/Aether");
+    let foreign = atom.replace(
+        &format!("{}/{}", repo.owner, repo.name),
+        "someoneelse/Aether",
+    );
     assert!(GithubReleaseManager::release_tags_from_atom(&foreign, repo).is_empty());
 
-    let html = format!(r#"<a href="/{}/{}/releases/tag/tdesk-1.0.5">tdesk-1.0.5</a>"#, repo.owner, repo.name);
+    let html = format!(
+        r#"<a href="/{}/{}/releases/tag/tdesk-1.0.5">tdesk-1.0.5</a>"#,
+        repo.owner, repo.name
+    );
     let html_tags = GithubReleaseManager::release_tags_from_atom(&html, repo);
     assert_eq!(html_tags, vec!["tdesk-1.0.5".to_string()]);
 }

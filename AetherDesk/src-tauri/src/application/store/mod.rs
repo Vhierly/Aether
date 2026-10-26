@@ -29,8 +29,8 @@ pub use model::{
     LuaToolsDownloadRequest, StoreSuggestItem,
 };
 pub use search::{
-    check_crack_status_bulk, check_pc_drm_bulk, CrackInfo, check_denuvo_bulk, get_cached_store_search, get_genres_bulk, get_trending_store_games, search_store,
-    suggest_store_games,
+    check_crack_status_bulk, check_denuvo_bulk, check_pc_drm_bulk, get_cached_store_search,
+    get_genres_bulk, get_trending_store_games, search_store, suggest_store_games, CrackInfo,
 };
 pub use specific_version::{
     prepare_luatools_specific_version_download, prepare_ryuu_specific_version_download,

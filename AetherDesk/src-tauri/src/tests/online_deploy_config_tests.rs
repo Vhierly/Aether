@@ -645,7 +645,6 @@ fn a_failed_refresh_keeps_the_previous_deployment() {
 }
 
 #[cfg(windows)]
-
 #[test]
 fn state_save_failure_keeps_empty_journal_for_a_safe_retry() {
     let (game, _data, record, backup_root, state_path) = deployed_with_original_plugins();

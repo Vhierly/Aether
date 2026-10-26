@@ -541,7 +541,10 @@ impl GithubReleaseManager {
                     api_error,
                     origin
                 );
-                match self.fetch_latest_by_prefix_public_fallback(prefixes, repo).await {
+                match self
+                    .fetch_latest_by_prefix_public_fallback(prefixes, repo)
+                    .await
+                {
                     Ok(release) => {
                         crate::desk_log_info!(
                             "updater",
@@ -586,7 +589,10 @@ impl GithubReleaseManager {
                     api_error,
                     origin
                 );
-                match self.fetch_latest_by_prefix_public_fallback(prefixes, repo).await {
+                match self
+                    .fetch_latest_by_prefix_public_fallback(prefixes, repo)
+                    .await
+                {
                     Ok(release) => {
                         crate::desk_log_info!(
                             "updater",
