@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::external_tools::fs::write_atomic;
+use crate::external_tools::fs::{lock_state_file, write_atomic};
 use crate::online::types::OnlineEnableRequest;
 
 const PREFERENCES_FILE: &str = "uc_online2_preferences.dat";
@@ -40,18 +40,25 @@ impl OnlinePreferencesStore {
     }
 
     pub fn upsert(
-        &mut self,
+        &self,
         app_id: u32,
         request: OnlineEnableRequest,
         path: &Path,
     ) -> Result<(), String> {
-        self.requests.insert(app_id, request);
-        self.save(path)
+        // The preferences file holds every app_id, so acquire an exclusive
+        // advisory lock and reload the current map before mutating: a clear on
+        // another app_id racing this enable can no longer be overwritten.
+        let _lock = lock_state_file(path)?;
+        let mut store = Self::load(path);
+        store.requests.insert(app_id, request);
+        store.save(path)
     }
 
-    pub fn remove(&mut self, app_id: u32, path: &Path) -> Result<(), String> {
-        self.requests.remove(&app_id);
-        self.save(path)
+    pub fn remove(&self, app_id: u32, path: &Path) -> Result<(), String> {
+        let _lock = lock_state_file(path)?;
+        let mut store = Self::load(path);
+        store.requests.remove(&app_id);
+        store.save(path)
     }
 
     fn save(&self, path: &Path) -> Result<(), String> {

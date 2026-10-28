@@ -35,6 +35,8 @@ pub fn get_online_preferences(app_id: u32) -> Result<Option<OnlineEnableRequest>
 #[tauri::command]
 pub fn clear_online_preferences(app_id: u32) -> Result<(), String> {
     let path = preferences_path();
+    // `OnlinePreferencesStore::remove` reloads and rewrites the shared map
+    // under its own advisory lock, so a concurrent enable cannot be lost.
     OnlinePreferencesStore::load(&path).remove(app_id, &path)
 }
 
@@ -208,7 +210,9 @@ pub async fn enable_online(
 
     // Preferences have a longer lifecycle than the deployment journal. Save
     // before deployment so user input survives failures, closing the popup and
-    // later disabling/re-enabling UCO2.
+    // later disabling/re-enabling UCO2. `upsert` reloads and rewrites the
+    // shared map under an advisory lock, so a concurrent clear on another
+    // app_id cannot be overwritten.
     let preferences_path = preferences_path();
     OnlinePreferencesStore::load(&preferences_path).upsert(
         app_id,

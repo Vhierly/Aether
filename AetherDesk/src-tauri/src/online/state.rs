@@ -4,7 +4,7 @@
 //! Atomic writes (tmp + rename). The record is an INDEX: the truth is the
 //! files on disk (reconciliation lives in `OnlineEngine::status`).
 
-use crate::external_tools::fs::write_atomic;
+use crate::external_tools::fs::{lock_state_file, write_atomic};
 use crate::online::types::OnlineRecord;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -38,15 +38,27 @@ impl OnlineStateStore {
     }
 
     /// Inserts/updates the record and saves atomically.
-    pub fn upsert(&mut self, record: OnlineRecord, path: &Path) -> Result<(), String> {
-        self.records.insert(record.app_id, record);
-        self.save(path)
+    ///
+    /// The state file is shared by every app_id, so this acquires an exclusive
+    /// advisory lock and reloads the current map before mutating: two
+    /// concurrent operations on different app_ids can no longer overwrite
+    /// each other's write-back.
+    pub fn upsert(&self, record: OnlineRecord, path: &Path) -> Result<(), String> {
+        let _lock = lock_state_file(path)?;
+        let mut store = Self::load(path);
+        store.records.insert(record.app_id, record);
+        store.save(path)
     }
 
     /// Removes the record (if present) and saves atomically.
-    pub fn remove(&mut self, app_id: u32, path: &Path) -> Result<(), String> {
-        self.records.remove(&app_id);
-        self.save(path)
+    ///
+    /// Same shared-file serialization as `upsert`: reloads under the lock so a
+    /// concurrent enable on another app_id is not lost.
+    pub fn remove(&self, app_id: u32, path: &Path) -> Result<(), String> {
+        let _lock = lock_state_file(path)?;
+        let mut store = Self::load(path);
+        store.records.remove(&app_id);
+        store.save(path)
     }
 
     fn save(&self, path: &Path) -> Result<(), String> {

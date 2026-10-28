@@ -45,6 +45,16 @@ pub fn disable(
     game_root: Option<&Path>,
     confirm_cleanup: bool,
 ) -> Result<DisableOutcome, String> {
+    disable_inner(app_id, backup_root, state_path, game_root, confirm_cleanup)
+}
+
+fn disable_inner(
+    app_id: u32,
+    backup_root: &Path,
+    state_path: &Path,
+    game_root: Option<&Path>,
+    confirm_cleanup: bool,
+) -> Result<DisableOutcome, String> {
     let backup_dir = backup_dir_for(backup_root, app_id);
     // Do not turn a corrupt/unreadable recovery index into an empty store.
     let mut store: OnlineStateStore = match fs::read_to_string(state_path) {
@@ -276,12 +286,12 @@ pub(crate) fn clean_online_conflicts(
     let removed = cleanup_online_files(game_root)?;
 
     // UCO2 is gone: drop the record so the UI reports NotConfigured.
-    if let Ok(content) = fs::read_to_string(state_path) {
-        if let Ok(mut store) = serde_json::from_str::<OnlineStateStore>(&content) {
-            if store.get(app_id).is_some() {
-                store.remove(app_id, state_path)?;
-            }
-        }
+    // `OnlineStateStore::remove` reloads and rewrites the shared map under its
+    // own advisory lock, so a concurrent enable on another app_id cannot be
+    // overwritten by this cleanup's write-back.
+    let store = OnlineStateStore::load(state_path);
+    if store.get(app_id).is_some() {
+        store.remove(app_id, state_path)?;
     }
     // The journal can no longer be replayed (its files are gone); the original
     // backups stay on disk for manual recovery.

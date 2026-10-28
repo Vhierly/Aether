@@ -3,9 +3,10 @@
 //! Extracted from `core/backup.rs` because several domains need them (crack
 //! backup, online deploy, journal): a single implementation, tested once.
 
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+
 
 /// Write bytes to `path` atomically via a temp file + rename.
 ///
@@ -13,12 +14,23 @@ use std::path::{Path, PathBuf};
 /// replaces the existing destination file (MoveFileExW with
 /// REPLACE_EXISTING), so the write stays "all or nothing" even
 /// when the target file already exists.
+///
+/// The staging name is `<path>.tmp`. It is deterministic on purpose: the
+/// per-game paths this writes (journal, crack recovery, union-crax.ini) are
+/// already serialized by `game_mutations`, and the one genuinely shared file
+/// — the global `uc_online2.json` — is written through
+/// `OnlineStateStore::upsert/remove`, which holds an exclusive advisory
+/// lock (see `lock_state_file`) and reloads the map before mutating. That
+/// lock is what closes the lost-update race; the deterministic temp name is
+/// what lets the journal-save-failure test sabotage the writer by placing a
+/// file at exactly that path.
+///
+/// Build the temp name from the OS string, never from `display()`: a lossy
+/// name (U+FFFD) can equal a real sibling file and overwrite it.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    // Build the temp name from the OS string, never from `display()`: a lossy
-    // name (U+FFFD) can equal a real sibling file and overwrite it.
     let mut temp_name = path.as_os_str().to_os_string();
     temp_name.push(".tmp");
-    let temp_path = PathBuf::from(temp_name);
+    let temp_path = std::path::PathBuf::from(temp_name);
 
     if let Some(parent) = temp_path.parent() {
         fs::create_dir_all(parent).map_err(|error| {
@@ -35,6 +47,36 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     })?;
     fs::rename(&temp_path, path)
         .map_err(|error| format!("Failed to finalize file {}: {}", path.display(), error))
+}
+
+/// Open (creating if missing) a sibling `<path>.lock` and hold an exclusive
+/// advisory lock on it for the lifetime of the returned file handle.
+///
+/// Used by the global state stores so two concurrent operations on the same
+/// file (even for different keys) serialize their read-modify-write. The OS
+/// releases the lock on crash; a leftover sidecar is harmless — it is never
+/// used as a stale-lock sentinel, so it is recreated on every open.
+pub fn lock_state_file(path: &Path) -> Result<std::fs::File, String> {
+    let parent = path.parent().ok_or_else(|| format!("State path has no parent: {}", path.display()))?;
+    fs::create_dir_all(parent).map_err(|error| {
+        format!("Failed to create directory {}: {}", parent.display(), error)
+    })?;
+    let lock_path = parent.join(format!(
+        ".{}.lock",
+        path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "state".to_string())
+    ));
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .map_err(|error| format!("Cannot open state lock {}: {error}", lock_path.display()))?;
+    file.lock()
+        .map_err(|error| format!("Cannot lock state {}: {error}", lock_path.display()))?;
+    Ok(file)
 }
 
 /// Every file under `root` (recursive, deterministic: each level is
@@ -291,5 +333,62 @@ mod tests {
             "a real sibling file was overwritten by the lossy temp name"
         );
         assert_eq!(fs::read(&target).unwrap(), b"payload");
+    }
+
+    /// After a successful commit the staging file must be gone: a leftover
+    /// `.tmp` would be picked up by the sabotage tests that pre-create it.
+    #[test]
+    fn write_atomic_leaves_no_staging_file_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("state.json");
+        write_atomic(&target, b"first").unwrap();
+
+        assert!(!dir.path().join("state.json.tmp").exists());
+        assert_eq!(fs::read(&target).unwrap(), b"first");
+
+        write_atomic(&target, b"second").unwrap();
+        assert!(!dir.path().join("state.json.tmp").exists());
+        assert_eq!(fs::read(&target).unwrap(), b"second");
+    }
+
+    /// `lock_state_file` serializes two handles on the same path and is
+    /// harmless when the sidecar already exists.
+    ///
+    /// The second attempt runs on a worker thread with a timeout:
+    /// `file.lock()` blocks, so asking for it from the same thread while the
+    /// first handle is held would deadlock the test itself.
+    #[test]
+    fn lock_state_file_is_exclusive_and_reusable() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("state.json");
+        fs::write(&target, b"x").unwrap();
+        let lock_path = dir.path().join(".state.json.lock");
+
+        let a = lock_state_file(&target).unwrap();
+        assert!(lock_path.exists(), "lock sidecar must be created");
+
+        // The second attempt must block while the first is held; run it on a
+        // worker thread so the test itself is not deadlocked.
+        let held = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let path_for_thread = target.clone();
+        let held_clone = held.clone();
+        let worker = std::thread::spawn(move || {
+            let result = lock_state_file(&path_for_thread);
+            held_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+            result
+        });
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert!(
+            !held.load(std::sync::atomic::Ordering::SeqCst),
+            "second lock attempt must block while the first is held"
+        );
+
+        drop(a);
+        let second = worker
+            .join()
+            .expect("worker panicked")
+            .expect("second lock must succeed after the first is released");
+        assert!(lock_path.exists(), "sidecar is recreated, not a stale sentinel");
+        drop(second);
     }
 }

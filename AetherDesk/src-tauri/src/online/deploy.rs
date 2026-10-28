@@ -98,7 +98,7 @@ pub fn deploy(
     let ini_path = ini_dir.join("union-crax.ini");
     let plugins_dir = ini_dir.join("plugins");
 
-    let mut store = OnlineStateStore::load(state_path);
+    let store = OnlineStateStore::load(state_path);
     let already_enabled = store.get(app_id).is_some();
 
     fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
