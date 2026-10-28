@@ -7,7 +7,6 @@ use std::fs::{self, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
-
 /// Write bytes to `path` atomically via a temp file + rename.
 ///
 /// Creates missing parent directories. On Windows `std::fs::rename`
@@ -57,10 +56,11 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
 /// releases the lock on crash; a leftover sidecar is harmless — it is never
 /// used as a stale-lock sentinel, so it is recreated on every open.
 pub fn lock_state_file(path: &Path) -> Result<std::fs::File, String> {
-    let parent = path.parent().ok_or_else(|| format!("State path has no parent: {}", path.display()))?;
-    fs::create_dir_all(parent).map_err(|error| {
-        format!("Failed to create directory {}: {}", parent.display(), error)
-    })?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("State path has no parent: {}", path.display()))?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("Failed to create directory {}: {}", parent.display(), error))?;
     let lock_path = parent.join(format!(
         ".{}.lock",
         path.file_name()
@@ -370,10 +370,9 @@ mod tests {
         // The second attempt must block while the first is held; run it on a
         // worker thread so the test itself is not deadlocked.
         let held = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let path_for_thread = target.clone();
         let held_clone = held.clone();
         let worker = std::thread::spawn(move || {
-            let result = lock_state_file(&path_for_thread);
+            let result = lock_state_file(&target);
             held_clone.store(true, std::sync::atomic::Ordering::SeqCst);
             result
         });
@@ -388,7 +387,10 @@ mod tests {
             .join()
             .expect("worker panicked")
             .expect("second lock must succeed after the first is released");
-        assert!(lock_path.exists(), "sidecar is recreated, not a stale sentinel");
+        assert!(
+            lock_path.exists(),
+            "sidecar is recreated, not a stale sentinel"
+        );
         drop(second);
     }
 }
