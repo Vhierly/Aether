@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
+use crate::core::settings::normalize_store_currency;
 
 const STEAM_BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
@@ -144,13 +145,14 @@ impl SteamStore {
         &self,
         query: &str,
         country_code: &str,
+        store_currency: &str,
     ) -> Result<Vec<SteamStoreItem>, String> {
         let trimmed = query.trim();
         if trimmed.len() < 2 {
             return Ok(Vec::new());
         }
 
-        let cache_key = suggest_cache_key(country_code, trimmed);
+        let cache_key = suggest_cache_key(country_code, trimmed, store_currency);
         if let Some(cached) = suggest_cache_get(&cache_key) {
             return Ok(cached);
         }
@@ -163,7 +165,7 @@ impl SteamStore {
             // No Tokio runtime to detach onto (only possible outside the Tauri
             // async runtime): fall back to the plain fan-out.
             let (suggest_res, apps_res) = tokio::join!(
-                self.fetch_suggest_html(trimmed, country_code),
+                self.fetch_suggest_html(trimmed, country_code, store_currency),
                 fetch_search_apps_with(&self.client, trimmed),
             );
             return Ok(suggest_cache_merge(
@@ -191,7 +193,7 @@ impl SteamStore {
         }
 
         let suggest_items = self
-            .fetch_suggest_html(trimmed, country_code)
+            .fetch_suggest_html(trimmed, country_code, store_currency)
             .await
             .unwrap_or_default();
         let apps_items = match tokio::time::timeout(SEARCH_APPS_GRACE, tail_rx).await {
@@ -206,7 +208,22 @@ impl SteamStore {
         &self,
         query: &str,
         country_code: &str,
+        store_currency: &str,
     ) -> Result<Vec<SteamStoreItem>, String> {
+        // Derive the language parameter from the store currency, mirroring the
+        // country-code logic used elsewhere (settings_model.rs). This ensures
+        // price formatting and UI language align with user prefs.
+        let language_code = match normalize_store_currency(store_currency).as_str() {
+            "idr" => "indonesian",
+            "inr" => "english",
+            "eur" | "usd" | "gbp" | "jpy" | "ars" | "brl" | "cad" | "aud"
+            | "chf" | "cny" | "krw" | "inr" | "mxn" | "rub" | "try" | "pln"
+            | "sek" | "nok" | "dkk" | "nzd" | "sgd" | "hkd" | "twd"
+            | "thb" | "myr" | "idr" | "php" | "ils" | "aed" | "sar"
+            | "clp" | "cop" | "pen" | "uah" | "kzt" | "vnd" | "zar" => "english",
+            _ => "english",
+        };
+
         let response = self
             .client
             .get(STEAM_SUGGEST_URL)
@@ -215,7 +232,7 @@ impl SteamStore {
                 ("term", query),
                 ("f", "games"),
                 ("cc", country_code),
-                ("l", "italian"),
+                ("l", language_code),
                 ("realm", "1"),
             ])
             .send()
@@ -237,6 +254,7 @@ impl SteamStore {
         &self,
         query: &str,
         country_code: &str,
+        store_currency: &str,
     ) -> Result<Vec<SteamStoreItem>, String> {
         if query.trim().is_empty() {
             return Ok(Vec::new());
@@ -244,10 +262,24 @@ impl SteamStore {
 
         let url = "https://store.steampowered.com/api/storesearch/";
 
+        // Derive the language parameter from the store currency, mirroring the
+        // country-code logic used elsewhere (settings_model.rs). This ensures
+        // price formatting (€ vs IDR etc.) and UI language align with user prefs.
+        let language_code = match normalize_store_currency(store_currency).as_str() {
+            "idr" => "indonesian",
+            "inr" => "english",
+            "eur" | "usd" | "gbp" | "jpy" | "ars" | "brl" | "cad" | "aud"
+            | "chf" | "cny" | "krw" | "inr" | "mxn" | "rub" | "try" | "pln"
+            | "sek" | "nok" | "dkk" | "nzd" | "sgd" | "hkd" | "twd"
+            | "thb" | "myr" | "idr" | "php" | "ils" | "aed" | "sar"
+            | "clp" | "cop" | "pen" | "uah" | "kzt" | "vnd" | "zar" => "english",
+            _ => "english",
+        };
+
         let response = self
             .client
             .get(url)
-            .query(&[("term", query), ("l", "italian"), ("cc", country_code)])
+            .query(&[("term", query), ("l", language_code), ("cc", country_code)])
             .send()
             .await
             .map_err(|e| format!("Steam API network error: {}", e))?;
@@ -274,8 +306,9 @@ impl SteamStore {
         start: usize,
         count: usize,
         country_code: &str,
+        store_currency: &str,
     ) -> Result<Vec<SteamStoreItem>, String> {
-        let params = store_front_params(filter, start, count, country_code);
+        let params = store_front_params(filter, start, count, country_code, store_currency);
         let response = self
             .client
             .get(STEAM_SEARCH_RESULTS_URL)
@@ -397,7 +430,21 @@ fn store_front_params(
     start: usize,
     count: usize,
     country_code: &str,
+    store_currency: &str,
 ) -> Vec<(&'static str, String)> {
+    // Derive the language parameter from the store currency, mirroring the
+    // country-code logic used elsewhere (settings_model.rs).
+    let language_code = match normalize_store_currency(store_currency).as_str() {
+        "idr" => "indonesian",
+        "inr" => "english",
+        "eur" | "usd" | "gbp" | "jpy" | "ars" | "brl" | "cad" | "aud"
+        | "chf" | "cny" | "krw" | "inr" | "mxn" | "rub" | "try" | "pln"
+        | "sek" | "nok" | "dkk" | "nzd" | "sgd" | "hkd" | "twd"
+        | "thb" | "myr" | "idr" | "php" | "ils" | "aed" | "sar"
+        | "clp" | "cop" | "pen" | "uah" | "kzt" | "vnd" | "zar" => "english",
+        _ => "english",
+    };
+
     let mut params = vec![
         ("start", start.to_string()),
         ("count", count.min(100).to_string()),
@@ -405,7 +452,7 @@ fn store_front_params(
         ("infinite", "1".to_string()),
         ("json", "1".to_string()),
         ("cc", country_code.to_string()),
-        ("l", "italian".to_string()),
+        ("l", language_code.to_string()),
         // Games only. Avoids hardware/videos/tools leaking into the Store front.
         ("category1", "998".to_string()),
     ];
@@ -581,10 +628,12 @@ async fn fetch_search_apps_with(
         .collect())
 }
 
-fn suggest_cache_key(country_code: &str, query: &str) -> String {
+fn suggest_cache_key(country_code: &str, query: &str, store_currency: &str) -> String {
+    let currency = normalize_store_currency(store_currency);
     format!(
-        "{}:{}",
+        "{}:{}:{}",
         country_code.trim().to_uppercase(),
+        currency,
         query
             .split_whitespace()
             .collect::<Vec<_>>()

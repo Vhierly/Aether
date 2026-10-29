@@ -85,14 +85,22 @@ impl OnlineStateStore {
     }
 
     /// Thread-safe upsert: loads fresh, applies change, saves — all under the lock.
+    ///
+    /// The inner `upsert` re-acquires the advisory file lock and reloads the
+    /// map, so the store loaded here is only used to hold the global mutex
+    /// guard across the call.
     pub fn upsert_locked(record: OnlineRecord, path: &Path) -> Result<(), String> {
-        let (_guard, mut store) = lock_state_mut(path);
+        let (_guard, store) = lock_state_mut(path);
         store.upsert(record, path)
     }
 
     /// Thread-safe remove: loads fresh, applies change, saves — all under the lock.
+    ///
+    /// The inner `remove` re-acquires the advisory file lock and reloads the
+    /// map, so the store loaded here is only used to hold the global mutex
+    /// guard across the call.
     pub fn remove_locked(app_id: u32, path: &Path) -> Result<(), String> {
-        let (_guard, mut store) = lock_state_mut(path);
+        let (_guard, store) = lock_state_mut(path);
         store.remove(app_id, path)
     }
 }

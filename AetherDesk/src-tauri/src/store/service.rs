@@ -201,10 +201,11 @@ impl StoreService {
         show_store_nsfw: bool,
         show_store_delisted: bool,
         steam_country_code: &str,
+        store_currency: &str,
     ) -> Result<Vec<UnifiedStoreGame>, String> {
         let steam_items = self
             .steam_store
-            .store_front_for_country(store_front_filter, start, count, steam_country_code)
+            .store_front_for_country(store_front_filter, start, count, steam_country_code, store_currency)
             .await?;
 
         if steam_items.is_empty() {
@@ -320,6 +321,7 @@ impl StoreService {
         show_store_nsfw: bool,
         show_store_delisted: bool,
         steam_country_code: &str,
+        store_currency: &str,
     ) -> Result<Vec<UnifiedStoreGame>, String> {
         if query.trim().is_empty() {
             return Ok(Vec::new());
@@ -367,9 +369,9 @@ impl StoreService {
                         let s1 = steam_store_clone.clone();
                         let s2 = steam_store_clone.clone();
                         let (a, b, c) = tokio::join!(
-                            s0.search_catalog_for_country(&q0, steam_country_code),
-                            s1.search_catalog_for_country(&q1, steam_country_code),
-                            s2.search_catalog_for_country(&q2, steam_country_code)
+                            s0.search_catalog_for_country(&q0, steam_country_code, store_currency),
+                            s1.search_catalog_for_country(&q1, steam_country_code, store_currency),
+                            s2.search_catalog_for_country(&q2, steam_country_code, store_currency)
                         );
                         vec![a, b, c]
                     }
@@ -379,8 +381,8 @@ impl StoreService {
                         let s0 = steam_store_clone.clone();
                         let s1 = steam_store_clone.clone();
                         let (a, b) = tokio::join!(
-                            s0.search_catalog_for_country(&q0, steam_country_code),
-                            s1.search_catalog_for_country(&q1, steam_country_code)
+                            s0.search_catalog_for_country(&q0, steam_country_code, store_currency),
+                            s1.search_catalog_for_country(&q1, steam_country_code, store_currency)
                         );
                         vec![a, b]
                     }
@@ -388,7 +390,7 @@ impl StoreService {
                         let q0 = steam_queries_for_fut[0].clone();
                         vec![
                             steam_store_clone
-                                .search_catalog_for_country(&q0, steam_country_code)
+                                .search_catalog_for_country(&q0, steam_country_code, store_currency)
                                 .await,
                         ]
                     }

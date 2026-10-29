@@ -20,9 +20,10 @@ pub async fn suggest_store_games(
     query: &str,
 ) -> Result<Vec<StoreSuggestItem>, String> {
     let settings = load_settings(app);
-    let country = steam_country_code_for_currency(&settings.store_currency);
+    let store_currency = normalize_store_currency(&settings.store_currency);
+    let country = steam_country_code_for_currency(&store_currency);
     let items = crate::steam::store::SteamStore::new()
-        .suggest_for_country(query.trim(), country)
+        .suggest_for_country(query.trim(), country, &store_currency)
         .await?;
     Ok(items
         .into_iter()
@@ -84,6 +85,7 @@ pub async fn search_store(
             show_store_nsfw,
             show_store_delisted,
             steam_country_code,
+            &store_currency,
         )
         .await
     {
@@ -176,6 +178,7 @@ pub async fn get_trending_store_games(
             show_store_nsfw,
             show_store_delisted,
             steam_country_code,
+            &store_currency,
         )
         .await
     {
