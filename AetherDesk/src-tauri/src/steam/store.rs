@@ -67,10 +67,25 @@ pub struct SteamSearchResponse {
     pub items: Vec<SteamStoreItem>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 struct SteamSearchResultsResponse {
     success: Option<u32>,
     results_html: Option<String>,
+}
+
+/// Steam switched the search-results JSON payload at some point in 2025 from
+/// an embedded `results_html` blob to a flat `items` array of `{name, logo}`.
+/// The logo URL embeds the app id (`store_item_assets/steam/apps/<id>/...`),
+/// so the id is recoverable — but only if this struct is deserialized.
+#[derive(Debug, Deserialize)]
+struct SteamSearchResultsV2 {
+    items: Option<Vec<SteamSearchResultsV2Item>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SteamSearchResultsV2Item {
+    name: String,
+    logo: String,
 }
 
 /// Community SearchApps JSON. `appid` is sometimes a string, sometimes a number.
@@ -276,17 +291,35 @@ impl SteamStore {
             ));
         }
 
-        let data = response
-            .json::<SteamSearchResultsResponse>()
+        // Steam's search-results JSON has shifted formats over time. The
+        // legacy payload wraps an HTML blob (`results_html`) with
+        // `data-ds-appid` on each row; the newer payload is a flat `items`
+        // array of `{name, logo}` where the app id lives in the logo URL.
+        // Read the body once and try both shapes against the same bytes.
+        let body = response
+            .text()
             .await
-            .map_err(|e| format!("Failed to parse Steam trending response: {}", e))?;
+            .map_err(|e| format!("Failed to read Steam trending response: {}", e))?;
 
-        if data.success != Some(1) {
+        let legacy: SteamSearchResultsResponse = serde_json::from_str(&body).unwrap_or_default();
+
+        if legacy.success != Some(1) {
             return Ok(Vec::new());
         }
 
-        Ok(parse_search_results_html(
-            data.results_html.as_deref().unwrap_or_default(),
+        if let Some(html) = legacy.results_html.as_deref() {
+            if !html.trim().is_empty() {
+                return Ok(parse_search_results_html(html, country_code));
+            }
+        }
+
+        let v2: SteamSearchResultsV2 = match serde_json::from_str(&body) {
+            Ok(v) => v,
+            Err(_) => return Ok(Vec::new()),
+        };
+
+        Ok(parse_search_results_v2(
+            v2.items.as_deref().unwrap_or_default(),
             country_code,
         ))
     }
@@ -459,6 +492,51 @@ fn currency_for_country(country_code: &str) -> &'static str {
     }
 }
 
+/// Parses the newer Steam search-results payload: a flat `items` array of
+/// `{name, logo}` where the app id is embedded in the logo URL
+/// (`store_item_assets/steam/apps/<id>/...`). Deduplicates by id so a single
+/// page can never carry the same game twice.
+fn parse_search_results_v2(
+    items: &[SteamSearchResultsV2Item],
+    _country_code: &str,
+) -> Vec<SteamStoreItem> {
+    let mut seen = std::collections::HashSet::new();
+    items
+        .iter()
+        .filter_map(|item| {
+            let id = extract_app_id_from_logo(&item.logo)?;
+            if !seen.insert(id) {
+                return None;
+            }
+            let name = decode_html(&item.name);
+            if name.trim().is_empty() {
+                return None;
+            }
+            Some(SteamStoreItem {
+                id,
+                name,
+                image_url: item.logo.clone(),
+                item_type: Some("app".to_string()),
+                price: None,
+                metascore: None,
+                platforms: None,
+                streamingvideo: None,
+                controller_support: None,
+            })
+        })
+        .collect()
+}
+
+/// Steam's logo URLs look like
+/// `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/4435490/<hash>.jpg`
+/// The app id is the numeric segment between `/apps/` and the next `/`.
+fn extract_app_id_from_logo(logo: &str) -> Option<u32> {
+    let marker = "/apps/";
+    let start = logo.find(marker)? + marker.len();
+    let end = logo[start..].find('/')?;
+    logo[start..start + end].parse::<u32>().ok()
+}
+
 /// `steamcommunity.com/actions/SearchApps/<query>`: the long, unranked
 /// autocomplete list. Free function (not a method) so the typeahead can run it
 /// on a detached task that outlives the caller's grace window.
@@ -604,4 +682,111 @@ fn decode_html(value: &str) -> String {
         .replace("&gt;", ">")
         .trim()
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn v2_payload_parses_ids_from_logo_urls() {
+        let items = vec![
+            SteamSearchResultsV2Item {
+                name: "Cyberpunk 2077".to_string(),
+                logo: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1091500/abc.jpg".to_string(),
+            },
+            SteamSearchResultsV2Item {
+                name: "Counter-Strike 2".to_string(),
+                logo: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/730/def.jpg".to_string(),
+            },
+        ];
+        let parsed = parse_search_results_v2(&items, "US");
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].id, 1091500);
+        assert_eq!(parsed[0].name, "Cyberpunk 2077");
+        assert_eq!(parsed[1].id, 730);
+    }
+
+    #[test]
+    fn v2_payload_deduplicates_by_app_id() {
+        let items = vec![
+            SteamSearchResultsV2Item {
+                name: "Game A".to_string(),
+                logo: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/100/first.jpg".to_string(),
+            },
+            SteamSearchResultsV2Item {
+                name: "Game A".to_string(),
+                logo: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/100/second.jpg".to_string(),
+            },
+            SteamSearchResultsV2Item {
+                name: "Game B".to_string(),
+                logo: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/200/other.jpg".to_string(),
+            },
+        ];
+        let parsed = parse_search_results_v2(&items, "US");
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(
+            parsed.iter().map(|g| g.id).collect::<Vec<_>>(),
+            vec![100, 200]
+        );
+    }
+
+    #[test]
+    fn v2_payload_skips_malformed_logo_urls() {
+        let items = vec![
+            SteamSearchResultsV2Item {
+                name: "Broken".to_string(),
+                logo: "not-a-url".to_string(),
+            },
+            SteamSearchResultsV2Item {
+                name: "Good".to_string(),
+                logo:
+                    "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/42/ok.jpg"
+                        .to_string(),
+            },
+        ];
+        let parsed = parse_search_results_v2(&items, "US");
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].id, 42);
+    }
+
+    #[test]
+    fn extract_app_id_from_logo_handles_real_url() {
+        let url = "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/4435490/50d218e79ead2650bc6b7360995cc8dd3fbe2c29/capsule_sm_120.jpg?t=1793201144";
+        assert_eq!(extract_app_id_from_logo(url), Some(4435490));
+    }
+
+    #[test]
+    fn extract_app_id_from_logo_returns_none_for_missing_segment() {
+        assert_eq!(
+            extract_app_id_from_logo("https://example.com/no/apps/here"),
+            None
+        );
+        assert_eq!(extract_app_id_from_logo(""), None);
+    }
+
+    #[test]
+    fn legacy_html_payload_still_parses() {
+        let html = r#"<a data-ds-appid="111" class="search_result_row"><span class="title">Legacy Game</span></a>
+<a data-ds-appid="222" class="search_result_row"><span class="title">Another</span></a>"#;
+        let parsed = parse_search_results_html(html, "US");
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].id, 111);
+        assert_eq!(parsed[1].id, 222);
+    }
+
+    #[test]
+    fn legacy_html_payload_keeps_every_row() {
+        // The parser is a pure extractor: it returns every row it can parse.
+        // Deduplication is the caller's responsibility — StoreService::trending
+        // skips duplicate ids before building UnifiedStoreGame, and the
+        // frontend merge in useTrendingStore keeps a seen-id set. Verifying
+        // that the parser returns both rows here guards against it silently
+        // dropping rows, which would also drop the dedup safety net.
+        let html = r#"<a data-ds-appid="1" class="search_result_row"><span class="title">Dup</span></a>
+<a data-ds-appid="1" class="search_result_row"><span class="title">Dup</span></a>"#;
+        let parsed = parse_search_results_html(html, "US");
+        assert_eq!(parsed.len(), 2);
+        assert!(parsed.iter().all(|g| g.id == 1));
+    }
 }
