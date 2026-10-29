@@ -217,7 +217,7 @@ pub fn deploy(
             backup_dir: backup_dir.clone(),
             overlay_proxy_path,
         };
-        store.upsert(record.clone(), state_path)?;
+        OnlineStateStore::upsert_locked(record.clone(), state_path)?;
 
         Ok(record)
     })();

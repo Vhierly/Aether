@@ -163,8 +163,9 @@ impl StoreService {
 
         match tokio::time::timeout(Duration::from_millis(HUBCAP_SEARCH_BUDGET_MS), lookup).await {
             Ok(games) => {
-                eprintln!(
-                    "[Hubcap] Search for '{}' ({} variant(s), {} queries) returned {} games",
+                crate::desk_log_debug!(
+                    "store",
+                    "Hubcap search for '{}' ({} variant(s), {} queries) returned {} games",
                     query,
                     base_variants.len(),
                     all_queries.len(),
@@ -173,8 +174,9 @@ impl StoreService {
                 games
             }
             Err(_) => {
-                eprintln!(
-                    "[Hubcap] Search timeout for '{}' ({}ms)",
+                crate::desk_log_debug!(
+                    "store",
+                    "Hubcap search timeout for '{}' ({}ms)",
                     query, HUBCAP_SEARCH_BUDGET_MS
                 );
                 Vec::new()
@@ -402,7 +404,12 @@ impl StoreService {
                         }
                     }
                     Err(e) => {
-                        eprintln!("[Store] Steam catalog chunk failed for '{}': {}", query, e);
+                        crate::desk_log_debug!(
+                            "store",
+                            "Steam catalog chunk failed for '{}': {}",
+                            query,
+                            e
+                        );
                     }
                 }
             }
@@ -422,7 +429,12 @@ impl StoreService {
         let steam_items = match steam_res {
             Ok(items) => items,
             Err(e) => {
-                eprintln!("[Store] Steam catalog failed for '{}': {}", query, e);
+                crate::desk_log_debug!(
+                    "store",
+                    "Steam catalog failed for '{}': {}",
+                    query,
+                    e
+                );
                 Vec::new()
             }
         };
@@ -481,14 +493,26 @@ impl StoreService {
                 };
                 match probe {
                     Ok(true) => {
-                        eprintln!("[Hubcap] Exact fallback verified manifest for {}", app_id);
+                        crate::desk_log_debug!(
+                            "store",
+                            "Hubcap exact fallback verified manifest for {}",
+                            app_id
+                        );
                         verified.push(app_id);
                     }
                     Ok(false) => {
-                        eprintln!("[Hubcap] Exact fallback: no manifest for {}", app_id);
+                        crate::desk_log_debug!(
+                            "store",
+                            "Hubcap exact fallback: no manifest for {}",
+                            app_id
+                        );
                     }
                     Err(_) => {
-                        eprintln!("[Hubcap] Exact fallback timeout for {}", app_id);
+                        crate::desk_log_debug!(
+                            "store",
+                            "Hubcap exact fallback timeout for {}",
+                            app_id
+                        );
                     }
                 }
             }
@@ -673,8 +697,9 @@ impl StoreService {
                 true
             });
             if dlc_filtered + nsfw_filtered + delisted_filtered > 0 {
-                eprintln!(
-                    "[Store] Filters for '{}': dropped {} DLC + {} NSFW + {} delisted row(s)",
+                crate::desk_log_debug!(
+                    "store",
+                    "Filters for '{}': dropped {} DLC + {} NSFW + {} delisted row(s)",
                     query, dlc_filtered, nsfw_filtered, delisted_filtered
                 );
             }

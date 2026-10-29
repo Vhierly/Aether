@@ -304,7 +304,7 @@ pub fn run_apply_update(staging: &Path, install_root: &Path) -> i32 {
     let install_root = match validate_install_root(install_root) {
         Ok(root) => root,
         Err(error) => {
-            eprintln!("[AetherDesk] refusing update: {error}");
+            crate::desk_log_error!("updater", "refusing update: {error}");
             return 1;
         }
     };
@@ -313,24 +313,31 @@ pub fn run_apply_update(staging: &Path, install_root: &Path) -> i32 {
 
     // Wait until the original exe is no longer locked by the exiting instance.
     if !wait_until_replaceable(&exe) {
-        eprintln!("[AetherDesk] timed out waiting for the old exe to unlock");
+        crate::desk_log_error!("updater", "timed out waiting for the old exe to unlock");
         return 1;
     }
 
-    // Rename the old exe so the new one can take its place.
-    let _ = fs::rename(&exe, &old);
+    // Rename the old exe so the new one can take its place. If the rename fails,
+    // the old exe may already be gone (e.g. from a previous failed attempt);
+    // we proceed because the staging area has the full new install.
+    let had_old_exe = fs::rename(&exe, &old).is_ok();
 
     // Merge staging into the install root, never touching AetherData.
     if let Err(e) = merge_tree(staging, &install_root) {
-        eprintln!("[AetherDesk] update apply failed: {e}");
-        let _ = fs::rename(&old, &exe);
+        crate::desk_log_error!("updater", "update apply failed: {e}");
+        // Rollback: restore the original exe if we successfully renamed it.
+        if had_old_exe {
+            let _ = fs::rename(&old, &exe);
+        }
         return 1;
     }
 
     // Cleanup staging and the downloaded zip. The per-run directory holding the
     // currently running updater copy stays until `cleanup_stale_artifacts` ages
     // it out, because Windows cannot delete a running exe.
-    let _ = fs::remove_file(old);
+    if had_old_exe {
+        let _ = fs::remove_file(old);
+    }
     let _ = fs::remove_dir_all(staging);
     let _ = fs::remove_file(update_workdir().join("aetherdesk_update.zip"));
 
@@ -462,20 +469,21 @@ pub fn run_uninstall(install_root: &Path, delete_user_data: bool) -> i32 {
     let install_root = match super::desk_uninstall::validate_target(install_root) {
         Ok(root) => root,
         Err(error) => {
-            eprintln!("[AetherDesk] refusing uninstall: {error}");
+            crate::desk_log_error!("updater", "refusing uninstall: {error}");
             return 1;
         }
     };
     thread::sleep(Duration::from_millis(800));
     if let Err(error) = super::desk_uninstall::uninstall(&install_root, delete_user_data) {
-        eprintln!("[AetherDesk] uninstall incomplete: {error}");
+        crate::desk_log_error!("updater", "uninstall incomplete: {error}");
         return 1;
     }
     if let Err(error) = restore_default_icon_after_uninstall() {
-        eprintln!("[AetherDesk] failed to restore default shell icon: {error}");
+        crate::desk_log_error!("updater", "failed to restore default shell icon: {error}");
     }
-    eprintln!(
-        "[AetherDesk] verified app files removed; retained files/data stay in {}",
+    crate::desk_log_info!(
+        "updater",
+        "verified app files removed; retained files/data stay in {}",
         install_root.display()
     );
     schedule_helper_self_delete();

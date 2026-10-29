@@ -100,7 +100,7 @@ impl GenreDetector {
                 );
             }
             if let Err(e) = self.save_cache(&cache) {
-                eprintln!("[GENRE] Failed to persist genre cache: {}", e);
+                crate::desk_log_error!("genre", "Failed to persist genre cache: {}", e);
             }
         }
         results.extend(fetched);

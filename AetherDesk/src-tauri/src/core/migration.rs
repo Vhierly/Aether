@@ -42,8 +42,9 @@ mod fs_utils {
             } else if s.is_file() && !d.exists() {
                 match fs::copy(&s, &d) {
                     Ok(_) => count += 1,
-                    Err(e) => eprintln!(
-                        "[AetherDesk] copy failed {} -> {}: {}",
+                    Err(e) => crate::desk_log_warn!(
+                        "migration",
+                        "copy failed {} -> {}: {}",
                         s.display(),
                         d.display(),
                         e
@@ -81,16 +82,17 @@ mod fs_utils {
         }
         let n = copy_missing_only(src, dst)?;
         if n > 0 {
-            eprintln!(
-                "[AetherDesk] migrated {n} file(s) {label} {} -> {}",
+            crate::desk_log_info!(
+                "migration",
+                "migrated {n} file(s) {label} {} -> {}",
                 src.display(),
                 dst.display()
             );
         }
         if is_fully_copied(src, dst) {
             match fs::remove_dir_all(src) {
-                Ok(()) => eprintln!("[AetherDesk] removed legacy {label} {}", src.display()),
-                Err(e) => eprintln!("[AetherDesk] keep legacy {label} {}: {}", src.display(), e),
+                Ok(()) => crate::desk_log_info!("migration", "removed legacy {label} {}", src.display()),
+                Err(e) => crate::desk_log_warn!("migration", "keep legacy {label} {}: {}", src.display(), e),
             }
         }
         Ok(n)
@@ -111,10 +113,7 @@ mod legacy_install {
         let new_bin = current.join("AetherDesk.exe");
         if legacy_bin.exists() && new_bin.exists() {
             let _ = std::fs::remove_file(&legacy_bin);
-            eprintln!(
-                "[AetherDesk] removed legacy binary {}",
-                legacy_bin.display()
-            );
+            crate::desk_log_info!("migration", "removed legacy binary {}", legacy_bin.display());
         }
         let legacy_uninst = current.join("uninstall.exe");
         if legacy_uninst.exists() && current.join("Uninstall AetherDesk.exe").exists() {
@@ -261,8 +260,8 @@ pub fn remove_obsolete_component_version_dirs(app: &tauri::AppHandle) {
     for dir in candidates {
         if dir.is_dir() {
             match fs::remove_dir_all(&dir) {
-                Ok(()) => eprintln!("[AetherDesk] removed obsolete {}", dir.display()),
-                Err(e) => eprintln!("[AetherDesk] failed rm {}: {}", dir.display(), e),
+                Ok(()) => crate::desk_log_info!("migration", "removed obsolete {}", dir.display()),
+                Err(e) => crate::desk_log_warn!("migration", "failed rm {}: {}", dir.display(), e),
             }
         }
     }
@@ -300,7 +299,7 @@ pub(crate) fn migrate_legacy_steam_proxy_with_check(
 
 pub fn ensure_appearance_dirs() {
     if let Err(e) = crate::core::custom_css::ensure_default_assets() {
-        eprintln!("[AetherDesk] appearance dirs failed: {e}");
+        crate::desk_log_error!("migration", "appearance dirs failed: {e}");
     }
 }
 
@@ -363,10 +362,10 @@ pub fn run_critical_startup_migrations(app: &tauri::AppHandle) {
         "Running critical AetherDesk startup migrations..."
     );
     if let Err(e) = migrate_roaming_to_local_install() {
-        eprintln!("[AetherDesk] Roaming->Local failed: {e}");
+        crate::desk_log_error!("migration", "Roaming->Local failed: {e}");
     }
     if let Err(e) = migrate_programfiles_to_local_install() {
-        eprintln!("[AetherDesk] PF->Local failed: {e}");
+        crate::desk_log_error!("migration", "PF->Local failed: {e}");
     }
     remove_legacy_install_folders();
     reset_antivirus_exclusion_flag(app);
@@ -505,7 +504,7 @@ pub fn ensure_start_menu_shortcut() {
 
     if !programs_dir.exists() {
         if let Err(e) = fs::create_dir_all(&programs_dir) {
-            eprintln!("[AetherDesk] Failed to create Start Menu Programs folder: {e}");
+            crate::desk_log_error!("migration", "Failed to create Start Menu Programs folder: {e}");
             return;
         }
     }

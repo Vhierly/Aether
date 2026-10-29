@@ -104,6 +104,12 @@ pub struct AppSettings {
     /// Personal wallpaper displayed behind AetherDesk content.
     #[serde(default)]
     pub personal_wallpaper_enabled: bool,
+    /// Supabase URL for crack status database. Empty = use built-in default.
+    #[serde(default)]
+    pub supabase_url: String,
+    /// Supabase anon key for crack status database. Empty = use built-in default.
+    #[serde(default)]
+    pub supabase_anon_key: String,
     /// Wallpaper image opacity percentage (0..=100).
     #[serde(default = "default_wallpaper_opacity")]
     pub personal_wallpaper_opacity: u8,
@@ -328,6 +334,8 @@ impl Default for AppSettings {
             store_front_filter: default_store_front_filter(),
             store_currency: default_store_currency(),
             personal_wallpaper_enabled: false,
+            supabase_url: String::new(),
+            supabase_anon_key: String::new(),
             personal_wallpaper_opacity: default_wallpaper_opacity(),
             wallpaper_selected_file: String::new(),
             theme_selected_file: String::new(),
