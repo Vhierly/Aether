@@ -101,6 +101,10 @@ struct ProviderCredentials {
     hubcap_api_key: String,
     #[serde(default)]
     ryuu_api_key: String,
+    #[serde(default)]
+    supabase_url: String,
+    #[serde(default)]
+    supabase_anon_key: String,
 }
 
 impl SettingsManager {
@@ -188,6 +192,8 @@ impl SettingsManager {
                     .map_err(|_| "Invalid protected provider credentials".to_string())?;
                 settings.hubcap_api_key = credentials.hubcap_api_key;
                 settings.ryuu_api_key = credentials.ryuu_api_key;
+                settings.supabase_url = credentials.supabase_url;
+                settings.supabase_anon_key = credentials.supabase_anon_key;
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(format!("Cannot read protected credentials: {e}")),
@@ -361,12 +367,16 @@ impl SettingsManager {
         let credentials = ProviderCredentials {
             hubcap_api_key: settings.hubcap_api_key.clone(),
             ryuu_api_key: settings.ryuu_api_key.clone(),
+            supabase_url: settings.supabase_url.clone(),
+            supabase_anon_key: settings.supabase_anon_key.clone(),
         };
         let plain = serde_json::to_vec(&credentials).map_err(|e| e.to_string())?;
         let encrypted = crate::core::secure_storage::protect(&plain)?;
         let mut disk = settings.clone();
         disk.hubcap_api_key.clear();
         disk.ryuu_api_key.clear();
+        disk.supabase_url.clear();
+        disk.supabase_anon_key.clear();
         let pending = PendingSettings {
             format_version: 1,
             settings: serde_json::to_string_pretty(&disk).map_err(|e| e.to_string())?,
@@ -379,9 +389,13 @@ impl SettingsManager {
             let old_secret = ProviderCredentials {
                 hubcap_api_key: old.hubcap_api_key.clone(),
                 ryuu_api_key: old.ryuu_api_key.clone(),
+                supabase_url: old.supabase_url.clone(),
+                supabase_anon_key: old.supabase_anon_key.clone(),
             };
             old.hubcap_api_key.clear();
             old.ryuu_api_key.clear();
+            old.supabase_url.clear();
+            old.supabase_anon_key.clear();
             let backup = PendingSettings {
                 format_version: 1,
                 settings: serde_json::to_string_pretty(&old).map_err(|e| e.to_string())?,

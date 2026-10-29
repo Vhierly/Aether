@@ -44,7 +44,10 @@ pub fn relevance_score(query: &str, name: &str) -> usize {
         return 1 + (n_norm.len() - q_norm.len());
     }
     if n_norm.contains(&q_norm) {
-        let pos = n_norm.find(&q_norm).unwrap_or(0);
+        // `contains` guarantees `find` succeeds — no silent 0 fallback.
+        let pos = n_norm
+            .find(&q_norm)
+            .expect("n_norm contains q_norm, so find must succeed");
         return 100 + pos + (n_norm.len() - q_norm.len());
     }
     10000

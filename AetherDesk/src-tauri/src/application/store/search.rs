@@ -252,16 +252,44 @@ pub struct CrackInfo {
 }
 
 pub async fn check_crack_status_bulk(
-    _app: &tauri::AppHandle,
+    app: &tauri::AppHandle,
     app_ids: Vec<u32>,
  ) -> Result<HashMap<u32, CrackInfo>, String> {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    const SUPABASE_URL: &str = "https://lhvknkrfhehcclzlabsl.supabase.co";
-    const SUPABASE_ANON_KEY: &str =
+    const DEFAULT_SUPABASE_URL: &str = "https://lhvknkrfhehcclzlabsl.supabase.co";
+    const DEFAULT_SUPABASE_ANON_KEY: &str =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxodmtua3JmaGVoY2NsemxhYnNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NzM0MTksImV4cCI6MjA5NDQ0OTQxOX0.B7YOW_hpn2zHxR-sfHgiNgqidpfESwJpixLrh-MevE8";
     const CACHE_TTL: u64 = 24 * 60 * 60;
+    const MAX_APP_IDS: usize = 200;
+
+    if app_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    if app_ids.len() > MAX_APP_IDS {
+        return Err(format!(
+            "Too many app ids for crack status check ({} > {})",
+            app_ids.len(),
+            MAX_APP_IDS
+        ));
+    }
+    // Deduplicate while preserving order so the cache and the request payload
+    // never carry the same id twice.
+    let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    let app_ids: Vec<u32> = app_ids.into_iter().filter(|id| seen.insert(*id)).collect();
+
+    let settings = load_settings(app);
+    let supabase_url = if settings.supabase_url.is_empty() {
+        DEFAULT_SUPABASE_URL
+    } else {
+        &settings.supabase_url
+    };
+    let supabase_anon_key = if settings.supabase_anon_key.is_empty() {
+        DEFAULT_SUPABASE_ANON_KEY
+    } else {
+        &settings.supabase_anon_key
+    };
 
     let cache_dir = LocalAppPaths::data_root().join("cache");
     let _ = fs::create_dir_all(&cache_dir);
@@ -309,7 +337,7 @@ pub async fn check_crack_status_bulk(
         .join(",");
     let url = format!(
         "{}/rest/v1/games?select=steam_appid,status&steam_appid=in.({})",
-        SUPABASE_URL, ids_csv
+        supabase_url, ids_csv
     );
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
@@ -317,8 +345,8 @@ pub async fn check_crack_status_bulk(
         .map_err(|e| e.to_string())?;
     if let Ok(resp) = client
         .get(&url)
-        .header("apikey", SUPABASE_ANON_KEY)
-        .header("Authorization", format!("Bearer {}", SUPABASE_ANON_KEY))
+        .header("apikey", supabase_anon_key)
+        .header("Authorization", format!("Bearer {}", supabase_anon_key))
         .send()
         .await
     {

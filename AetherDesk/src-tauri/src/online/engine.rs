@@ -50,8 +50,7 @@ impl OnlineEngine {
             );
         }
 
-        let store = OnlineStateStore::load(state_path);
-        let current = store.get(app_id).cloned();
+        let current = OnlineStateStore::load(state_path).get(app_id).cloned();
 
         let notices = build_notices(&detection, bundle.as_ref().ok(), current.as_ref());
 

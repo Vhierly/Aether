@@ -98,8 +98,7 @@ pub fn deploy(
     let ini_path = ini_dir.join("union-crax.ini");
     let plugins_dir = ini_dir.join("plugins");
 
-    let mut store = OnlineStateStore::load(state_path);
-    let already_enabled = store.get(app_id).is_some();
+    let already_enabled = OnlineStateStore::load(state_path).get(app_id).is_some();
 
     fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
     fs::create_dir_all(backup_dir.join(ORIGINAL_SUBDIR)).map_err(|e| e.to_string())?;
@@ -217,7 +216,7 @@ pub fn deploy(
             backup_dir: backup_dir.clone(),
             overlay_proxy_path,
         };
-        store.upsert(record.clone(), state_path)?;
+        OnlineStateStore::upsert_locked(record.clone(), state_path)?;
 
         Ok(record)
     })();

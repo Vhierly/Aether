@@ -385,8 +385,9 @@ pub async fn fetch_store_items_for_country(
                 }
                 Err(e) => {
                     consecutive_failures += 1;
-                    eprintln!(
-                        "[SteamItems] GetItems failed for chunk starting at {}: {}",
+                    crate::desk_log_warn!(
+                        "store",
+                        "GetItems failed for chunk starting at {}: {}",
                         chunk.first().copied().unwrap_or_default(),
                         e
                     );

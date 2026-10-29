@@ -119,7 +119,10 @@ fn main() {
             // to the deferred pass. Saving a new icon still syncs synchronously
             // through the command path.
             if let Err(e) = crate::core::custom_css::apply_window_icon_only(app.handle()) {
-                eprintln!("[AetherDesk] window icon apply failed: {e}");
+                crate::desk_log_error!(
+                    "startup",
+                    "window icon apply failed: {e}"
+                );
             }
             let icon_ms = setup_started.elapsed().as_millis();
             crate::desk_log_info!(

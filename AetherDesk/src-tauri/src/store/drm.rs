@@ -118,11 +118,9 @@ impl DrmDetector {
                         Err(e) => {
                             if e.starts_with(api::RATE_LIMIT_ERROR_PREFIX) {
                                 breaker.store(true, Ordering::Relaxed);
-                                eprintln!(
-                                    "[DRM] Steam rate limit hit; aborting remaining Denuvo checks"
-                                );
+                                crate::desk_log_warn!("drm", "Steam rate limit hit; aborting remaining Denuvo checks");
                             } else {
-                                eprintln!("[DRM] Denuvo check failed for {}: {}", app_id, e);
+                                crate::desk_log_warn!("drm", "Denuvo check failed for {}: {}", app_id, e);
                             }
                             None // transient failures are not cached
                         }
@@ -132,8 +130,9 @@ impl DrmDetector {
         })
         .await;
         if rate_limited.load(Ordering::Relaxed) {
-            eprintln!(
-                "[DRM] Denuvo enrichment partially served from cache ({} fresh hits)",
+            crate::desk_log_info!(
+                "drm",
+                "Denuvo enrichment partially served from cache ({} fresh hits)",
                 results.len()
             );
         }
@@ -152,7 +151,7 @@ impl DrmDetector {
                 );
             }
             if let Err(e) = self.save_cache(&cache) {
-                eprintln!("[DRM] Failed to persist Denuvo cache: {}", e);
+                crate::desk_log_error!("drm", "Failed to persist Denuvo cache: {}", e);
             }
         }
         results.extend(fetched);

@@ -47,16 +47,11 @@ pub fn disable(
 ) -> Result<DisableOutcome, String> {
     let backup_dir = backup_dir_for(backup_root, app_id);
     // Do not turn a corrupt/unreadable recovery index into an empty store.
-    let mut store: OnlineStateStore = match fs::read_to_string(state_path) {
-        Ok(content) => serde_json::from_str(&content)
+    let content = std::fs::read_to_string(state_path).ok();
+    let mut store: OnlineStateStore = match content {
+        Some(content) => serde_json::from_str(&content)
             .map_err(|e| format!("Invalid online state {}: {e}", state_path.display()))?,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => OnlineStateStore::default(),
-        Err(error) => {
-            return Err(format!(
-                "Read online state {}: {error}",
-                state_path.display()
-            ))
-        }
+        None => OnlineStateStore::default(),
     };
     let journal_path = backup_dir.join("journal.json");
     let mut journal: Journal = match fs::read_to_string(&journal_path) {
@@ -83,7 +78,7 @@ pub fn disable(
     revert_from_journal(&mut journal, &backup_dir)?;
     // The now-empty journal stays available if persisting the index fails.
     if store.get(app_id).is_some() {
-        store.remove(app_id, state_path)?;
+        OnlineStateStore::remove_locked(app_id, state_path)?;
     }
     remove_file_if_present(&journal_path)?;
     remove_empty_dir(&backup_dir)?;
@@ -122,7 +117,7 @@ fn handle_missing_journal(
         })?;
         let removed = cleanup_orphaned_uco2(root)?;
         if record_exists {
-            store.remove(app_id, state_path)?;
+            OnlineStateStore::remove_locked(app_id, state_path)?;
         }
         // Never delete originals: without the journal they cannot be mapped
         // back, so they stay available for manual recovery.
@@ -145,7 +140,7 @@ fn handle_missing_journal(
     }
 
     if record_exists {
-        store.remove(app_id, state_path)?;
+        OnlineStateStore::remove_locked(app_id, state_path)?;
         return Ok(DisableOutcome::Done {
             message: "No tracked UCOnline2 deployment to restore; stale state cleared.".into(),
             warning: None,
@@ -277,9 +272,9 @@ pub(crate) fn clean_online_conflicts(
 
     // UCO2 is gone: drop the record so the UI reports NotConfigured.
     if let Ok(content) = fs::read_to_string(state_path) {
-        if let Ok(mut store) = serde_json::from_str::<OnlineStateStore>(&content) {
+        if let Ok(store) = serde_json::from_str::<OnlineStateStore>(&content) {
             if store.get(app_id).is_some() {
-                store.remove(app_id, state_path)?;
+                OnlineStateStore::remove_locked(app_id, state_path)?;
             }
         }
     }
