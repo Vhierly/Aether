@@ -1,6 +1,6 @@
 [package]
 name = "aether_desk"
-version = "1.4.35"
+version = "1.4.36"
 description = "AetherDesk - Professional Steam & Game Management Interface"
 authors = ["migo3"]
 edition = "2021"
@@ -65,6 +65,13 @@ winreg = "0.55"
 
 [dev-dependencies]
 tempfile = "3"
+
+# Windows cross-compile workaround: the registry unrar_sys 0.5.8 build.rs
+# conditionally skips `isnt.cpp` on `cfg(windows)`, leaving `IsWindows11OrGreater`
+# and `WinNT` undefined at link time on mingw. The patched copy always
+# compiles it. This patch is build-only and not committed.
+[patch.crates-io]
+unrar_sys = { path = "/tmp/unrar-patch/unrar_sys-0.5.8/unrar_sys-0.5.8" }
 
 # ----------------------------------------------------------------------------
 # Lint policy (enforced by `cargo clippy -- -D warnings` in build.cmd and CI).

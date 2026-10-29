@@ -1,7 +1,7 @@
 {
   "name": "aetherdesk-ui",
   "private": true,
-  "version": "1.4.35",
+  "version": "1.4.36",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -30,7 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@tauri-apps/cli": "2.11.5",
+    "@tauri-apps/cli": "^2.11.5",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
