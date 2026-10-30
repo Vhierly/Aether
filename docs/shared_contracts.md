@@ -254,3 +254,77 @@ guarded by `tests/ipc_contract_tests.rs::no_command_takes_a_steam_path_from_the_
 - The coordinator is not a multi-file rollback journal and does not solve the read-modify-write of global JSON cache/online state across different AppIDs: those are distinct domains.
 
 Diagnostics logs: `settings` (prepared/applying/finalized/conflict), `config` (operation/path/changed/error, never values), `mutations` (begin/release with ID, operation, AppID/root, duration; busy/conflict). **Release means freed resource, not successful operation**: the outcome stays in the caller's log.
+## 10. Log line contract
+
+`desk.log` and `main.log` are read as one document: the Logs view merges them
+with each other and with `uc_online2.log`, and `export_logs_bundle` ships them
+together as a support artifact. One shape, both halves:
+
+```
+[YYYY-MM-DD HH:MM:SS.mmm] [PID:12345] [TID:1234] [INFO ] [Module    ] message
+```
+
+- **Absolute local date, always.** It is the merge key: `commands/logs.rs`
+  orders merged lines on the first bracket (`sort_key`, which also feeds the
+  line's position in the export), so a bare `HH:MM:SS` cannot be ordered across
+  midnight and cannot be placed next to Windows' own logs. Fixed width:
+  millisecond precision, zero padded.
+- **`PID` is Desk-only.** `main.log` is written by Steam and by every game
+  process under one cross-process mutex, so a PID there would add bytes without
+  identifying anything the `TID` does not.
+- **Level tags are fixed width** (`TRACE`, `DEBUG`, `INFO `, `WARN `, `ERROR`),
+  because the view derives the line class from the bracketed tag.
+- **Module tag** names the concern (`store`, `library-watch`, `Depot`,
+  `License.Hooks`); Desk capitalizes the first letter, the DLL does not. The
+  merged view prepends its own source tag instead: `[DESK]`, `[DLL ]`, `[UCO2]`.
+- **No ANSI, no multi-line messages.** A stack or a payload is one line.
+
+Twins:
+- Desk: `core/logger.rs` → `format_line` (shape) and `format_timestamp_ms`
+  (date); merged ordering and source tags in `commands/logs.rs` →
+  `merge_tagged`, `sort_key`.
+- DLL: `core/Logger.cpp` → `FormatTimeAndThread` (date, buffer 64) and `Emit` /
+  `EmitSync` (shape).
+
+Decision under test: `core/logger.rs::tests::formatted_line_carries_an_absolute_date_and_the_shared_shape`
+and the `wire_logger_line_carries_the_date` ctest case assert the same shape
+from both halves; `commands/logs.rs::tests::merged_logs_sort_across_days_and_sources`
+covers the ordering the date exists for.
+
+### 10.1 Export bundle layout (Desk only)
+
+The `Save` button in the Logs view ships
+`Downloads\AetherLogs_HH-MM-SS.zip` (built by
+`AetherDesk/src-tauri/src/commands/logs.rs::export_logs_bundle_sync`) with
+one folder per artifact family:
+
+```
+AetherLog/  desk.log.txt, desk.log.last.txt, desk_status.json.txt
+            aetherdll_main.log.txt, aetherdll_main.log.last.txt, aetherdll_status.json.txt
+            uc_online2.log.txt (normalized to [UCO2]), donors.txt (no time suffix)
+SteamLog/   <original Steam names, already filtered>
+```
+
+- `AetherLog/` keeps a time suffix (`desk.log_14-32-05.txt`) because each
+  export is its own snapshot; files carry the millisecond stamp the §10
+  contract guarantees.
+- `SteamLog/` collects only `<Steam>\logs\` files named in
+  `AetherDesk/src-tauri/src/core/steam_logs.rs::SELECTED_STEAM_LOGS`, plus
+  Steam's own `.previous.txt` session twin of each, and only when the file's
+  mtime is within the last 12 hours. Lines are kept when their
+  `[YYYY-MM-DD HH:MM:SS]` Steam stamp is within the window; a file without
+  any stamp line is included whole, tail-capped at 4 MiB. Steam stamps are
+  second-precision, so Desk's millisecond stamps are what order the two
+  families against each other.
+
+---
+
+## Related
+
+- [`AetherDesk/docs/ARCHITECTURE.md`](../AetherDesk/docs/ARCHITECTURE.md) —
+  Desk module map, mutation ownership and settings repository.
+- [`AetherDLL/docs/ARCHITECTURE.md`](../AetherDLL/docs/ARCHITECTURE.md) —
+  AetherCore invariants.
+- [`docs/glossary.md`](glossary.md) — shared vocabulary.
+- [`docs/quality-gates.md`](quality-gates.md) — the gates that run the
+  contract tests.
