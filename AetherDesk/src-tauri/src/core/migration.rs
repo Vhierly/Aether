@@ -91,8 +91,15 @@ mod fs_utils {
         }
         if is_fully_copied(src, dst) {
             match fs::remove_dir_all(src) {
-                Ok(()) => crate::desk_log_info!("migration", "removed legacy {label} {}", src.display()),
-                Err(e) => crate::desk_log_warn!("migration", "keep legacy {label} {}: {}", src.display(), e),
+                Ok(()) => {
+                    crate::desk_log_info!("migration", "removed legacy {label} {}", src.display());
+                }
+                Err(e) => crate::desk_log_warn!(
+                    "migration",
+                    "keep legacy {label} {}: {}",
+                    src.display(),
+                    e
+                ),
             }
         }
         Ok(n)
@@ -113,7 +120,11 @@ mod legacy_install {
         let new_bin = current.join("AetherDesk.exe");
         if legacy_bin.exists() && new_bin.exists() {
             let _ = std::fs::remove_file(&legacy_bin);
-            crate::desk_log_info!("migration", "removed legacy binary {}", legacy_bin.display());
+            crate::desk_log_info!(
+                "migration",
+                "removed legacy binary {}",
+                legacy_bin.display()
+            );
         }
         let legacy_uninst = current.join("uninstall.exe");
         if legacy_uninst.exists() && current.join("Uninstall AetherDesk.exe").exists() {
@@ -504,7 +515,10 @@ pub fn ensure_start_menu_shortcut() {
 
     if !programs_dir.exists() {
         if let Err(e) = fs::create_dir_all(&programs_dir) {
-            crate::desk_log_error!("migration", "Failed to create Start Menu Programs folder: {e}");
+            crate::desk_log_error!(
+                "migration",
+                "Failed to create Start Menu Programs folder: {e}"
+            );
             return;
         }
     }

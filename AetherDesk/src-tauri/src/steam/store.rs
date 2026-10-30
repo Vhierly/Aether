@@ -1,3 +1,4 @@
+use crate::core::settings::normalize_store_currency;
 use crate::providers::http;
 use regex::Regex;
 use reqwest::header::USER_AGENT;
@@ -5,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use crate::core::settings::normalize_store_currency;
 
 const STEAM_BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
@@ -216,11 +216,10 @@ impl SteamStore {
         let language_code = match normalize_store_currency(store_currency).as_str() {
             "idr" => "indonesian",
             "inr" => "english",
-            "eur" | "usd" | "gbp" | "jpy" | "ars" | "brl" | "cad" | "aud"
-            | "chf" | "cny" | "krw" | "inr" | "mxn" | "rub" | "try" | "pln"
-            | "sek" | "nok" | "dkk" | "nzd" | "sgd" | "hkd" | "twd"
-            | "thb" | "myr" | "idr" | "php" | "ils" | "aed" | "sar"
-            | "clp" | "cop" | "pen" | "uah" | "kzt" | "vnd" | "zar" => "english",
+            "eur" | "usd" | "gbp" | "jpy" | "ars" | "brl" | "cad" | "aud" | "chf" | "cny"
+            | "krw" | "mxn" | "rub" | "try" | "pln" | "sek" | "nok" | "dkk" | "nzd" | "sgd"
+            | "hkd" | "twd" | "thb" | "myr" | "php" | "ils" | "aed" | "sar" | "clp" | "cop"
+            | "pen" | "uah" | "kzt" | "vnd" | "zar" => "english",
             _ => "english",
         };
 
@@ -268,11 +267,10 @@ impl SteamStore {
         let language_code = match normalize_store_currency(store_currency).as_str() {
             "idr" => "indonesian",
             "inr" => "english",
-            "eur" | "usd" | "gbp" | "jpy" | "ars" | "brl" | "cad" | "aud"
-            | "chf" | "cny" | "krw" | "inr" | "mxn" | "rub" | "try" | "pln"
-            | "sek" | "nok" | "dkk" | "nzd" | "sgd" | "hkd" | "twd"
-            | "thb" | "myr" | "idr" | "php" | "ils" | "aed" | "sar"
-            | "clp" | "cop" | "pen" | "uah" | "kzt" | "vnd" | "zar" => "english",
+            "eur" | "usd" | "gbp" | "jpy" | "ars" | "brl" | "cad" | "aud" | "chf" | "cny"
+            | "krw" | "mxn" | "rub" | "try" | "pln" | "sek" | "nok" | "dkk" | "nzd" | "sgd"
+            | "hkd" | "twd" | "thb" | "myr" | "php" | "ils" | "aed" | "sar" | "clp" | "cop"
+            | "pen" | "uah" | "kzt" | "vnd" | "zar" => "english",
             _ => "english",
         };
 
@@ -437,11 +435,10 @@ fn store_front_params(
     let language_code = match normalize_store_currency(store_currency).as_str() {
         "idr" => "indonesian",
         "inr" => "english",
-        "eur" | "usd" | "gbp" | "jpy" | "ars" | "brl" | "cad" | "aud"
-        | "chf" | "cny" | "krw" | "inr" | "mxn" | "rub" | "try" | "pln"
-        | "sek" | "nok" | "dkk" | "nzd" | "sgd" | "hkd" | "twd"
-        | "thb" | "myr" | "idr" | "php" | "ils" | "aed" | "sar"
-        | "clp" | "cop" | "pen" | "uah" | "kzt" | "vnd" | "zar" => "english",
+        "eur" | "usd" | "gbp" | "jpy" | "ars" | "brl" | "cad" | "aud" | "chf" | "cny" | "krw"
+        | "mxn" | "rub" | "try" | "pln" | "sek" | "nok" | "dkk" | "nzd" | "sgd" | "hkd" | "twd"
+        | "thb" | "myr" | "php" | "ils" | "aed" | "sar" | "clp" | "cop" | "pen" | "uah" | "kzt"
+        | "vnd" | "zar" => "english",
         _ => "english",
     };
 

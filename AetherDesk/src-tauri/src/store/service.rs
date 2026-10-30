@@ -177,7 +177,8 @@ impl StoreService {
                 crate::desk_log_debug!(
                     "store",
                     "Hubcap search timeout for '{}' ({}ms)",
-                    query, HUBCAP_SEARCH_BUDGET_MS
+                    query,
+                    HUBCAP_SEARCH_BUDGET_MS
                 );
                 Vec::new()
             }
@@ -205,7 +206,13 @@ impl StoreService {
     ) -> Result<Vec<UnifiedStoreGame>, String> {
         let steam_items = self
             .steam_store
-            .store_front_for_country(store_front_filter, start, count, steam_country_code, store_currency)
+            .store_front_for_country(
+                store_front_filter,
+                start,
+                count,
+                steam_country_code,
+                store_currency,
+            )
             .await?;
 
         if steam_items.is_empty() {
@@ -431,12 +438,7 @@ impl StoreService {
         let steam_items = match steam_res {
             Ok(items) => items,
             Err(e) => {
-                crate::desk_log_debug!(
-                    "store",
-                    "Steam catalog failed for '{}': {}",
-                    query,
-                    e
-                );
+                crate::desk_log_debug!("store", "Steam catalog failed for '{}': {}", query, e);
                 Vec::new()
             }
         };
@@ -702,7 +704,10 @@ impl StoreService {
                 crate::desk_log_debug!(
                     "store",
                     "Filters for '{}': dropped {} DLC + {} NSFW + {} delisted row(s)",
-                    query, dlc_filtered, nsfw_filtered, delisted_filtered
+                    query,
+                    dlc_filtered,
+                    nsfw_filtered,
+                    delisted_filtered
                 );
             }
         }

@@ -112,7 +112,12 @@ pub fn ensure_default_assets() -> Result<(), String> {
         let file = themes_dir.join(file_name);
         if !file.exists() {
             if let Err(e) = fs::write(&file, content) {
-                crate::desk_log_warn!("custom_css", "failed to write default theme {}: {}", file_name, e);
+                crate::desk_log_warn!(
+                    "custom_css",
+                    "failed to write default theme {}: {}",
+                    file_name,
+                    e
+                );
             }
         }
     }
@@ -121,7 +126,12 @@ pub fn ensure_default_assets() -> Result<(), String> {
         let file = wallpapers_dir.join(file_name);
         if !file.exists() {
             if let Err(e) = fs::write(&file, content) {
-                crate::desk_log_warn!("custom_css", "failed to write default wallpaper {}: {}", file_name, e);
+                crate::desk_log_warn!(
+                    "custom_css",
+                    "failed to write default wallpaper {}: {}",
+                    file_name,
+                    e
+                );
             }
         }
     }
@@ -131,7 +141,13 @@ pub fn ensure_default_assets() -> Result<(), String> {
     let renamed_meme = icons_dir.join("aether_genshin.ico");
     if legacy_meme.is_file() && !renamed_meme.exists() {
         if let Err(e) = fs::rename(&legacy_meme, &renamed_meme) {
-            crate::desk_log_warn!("custom_css", "failed to rename legacy icon {} → {}: {}", legacy_meme.display(), renamed_meme.display(), e);
+            crate::desk_log_warn!(
+                "custom_css",
+                "failed to rename legacy icon {} → {}: {}",
+                legacy_meme.display(),
+                renamed_meme.display(),
+                e
+            );
         }
     }
 
@@ -139,7 +155,12 @@ pub fn ensure_default_assets() -> Result<(), String> {
         let file = icons_dir.join(file_name);
         if !file.exists() {
             if let Err(e) = fs::write(&file, content) {
-                crate::desk_log_warn!("custom_css", "failed to write default icon {}: {}", file_name, e);
+                crate::desk_log_warn!(
+                    "custom_css",
+                    "failed to write default icon {}: {}",
+                    file_name,
+                    e
+                );
             }
         }
     }

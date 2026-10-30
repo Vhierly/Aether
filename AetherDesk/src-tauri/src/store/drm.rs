@@ -118,9 +118,17 @@ impl DrmDetector {
                         Err(e) => {
                             if e.starts_with(api::RATE_LIMIT_ERROR_PREFIX) {
                                 breaker.store(true, Ordering::Relaxed);
-                                crate::desk_log_warn!("drm", "Steam rate limit hit; aborting remaining Denuvo checks");
+                                crate::desk_log_warn!(
+                                    "drm",
+                                    "Steam rate limit hit; aborting remaining Denuvo checks"
+                                );
                             } else {
-                                crate::desk_log_warn!("drm", "Denuvo check failed for {}: {}", app_id, e);
+                                crate::desk_log_warn!(
+                                    "drm",
+                                    "Denuvo check failed for {}: {}",
+                                    app_id,
+                                    e
+                                );
                             }
                             None // transient failures are not cached
                         }
