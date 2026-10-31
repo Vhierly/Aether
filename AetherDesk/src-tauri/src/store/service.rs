@@ -290,7 +290,7 @@ impl StoreService {
             game.store_categories = Some(categories_from_store_meta(&meta));
             game.content_descriptor_ids = meta.content_descriptor_ids.clone();
             if game.price.is_none() {
-                game.price = price_from_store_meta(&meta);
+                game.price = price_from_store_meta(&meta, store_currency);
             }
         }
 
@@ -677,7 +677,7 @@ impl StoreService {
                 game.store_categories = Some(categories_from_store_meta(&meta));
                 game.content_descriptor_ids = meta.content_descriptor_ids.clone();
                 if game.price.is_none() {
-                    game.price = price_from_store_meta(&meta);
+                    game.price = price_from_store_meta(&meta, store_currency);
                 }
             }
 

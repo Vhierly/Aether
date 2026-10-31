@@ -81,3 +81,35 @@ describe('store card tag', () => {
     expect(tag()).toBeNull();
   });
 });
+
+describe('GameCard price', () => {
+  it('renders the formatted price with a discount badge', () => {
+    render(
+      <GameCard
+        game={game({
+          price: {
+            currency: 'IDR',
+            finalCents: 15000000,
+            formattedFinal: 'Rp 150.000',
+            discountPercent: 25,
+          },
+        })}
+      />
+    );
+
+    expect(screen.getByText('Rp 150.000')).toBeInTheDocument();
+    expect(screen.getByText('-25%')).toBeInTheDocument();
+  });
+
+  it('falls back to the currency code instead of a guessed symbol', () => {
+    render(<GameCard game={game({ price: { currency: 'IDR', finalCents: 15000000 } })} />);
+
+    expect(screen.getByText('IDR 150000.00')).toBeInTheDocument();
+  });
+
+  it('renders no price line when the backend sent none', () => {
+    render(<GameCard game={game({})} />);
+
+    expect(document.querySelector('.game-price')).toBeNull();
+  });
+});

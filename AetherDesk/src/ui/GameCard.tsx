@@ -1,4 +1,6 @@
 import { memo } from 'react';
+import { priceSummary } from '../modals/gameInfoFormat';
+import type { GameInfoPrice } from '../modals/gameInfoTypes';
 import { GameCover } from './GameCover';
 
 export interface GameCardModel {
@@ -12,6 +14,8 @@ export interface GameCardModel {
   has_nsfw?: boolean;
   has_delisted?: boolean;
   installed?: boolean;
+  /** Steam price when the backend supplied one (store cards). */
+  price?: GameInfoPrice | null;
   /** UCO2 support flag (library games). */
   uco2_supported?: boolean;
   /** Crack status from isitcracked.com (cracked/uncracked/unreleased/...). */
@@ -160,6 +164,14 @@ const GameCardInner = <T extends GameCardModel>({
             {game.name}
           </h3>
           <span className="game-appid">App ID: {game.appId}</span>
+          {game.price && (
+            <span className="game-price" title={priceSummary(game.price)}>
+              {priceSummary(game.price)}
+              {typeof game.price.discountPercent === 'number' && game.price.discountPercent > 0 && (
+                <span className="game-price-discount">-{game.price.discountPercent}%</span>
+              )}
+            </span>
+          )}
           {(() => {
             const parts: string[] = [];
             if (game.uco2_supported) parts.push('UCO2');

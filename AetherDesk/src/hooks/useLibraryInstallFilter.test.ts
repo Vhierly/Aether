@@ -65,3 +65,69 @@ describe('useLibraryInstallFilter install states', () => {
     expect(result.current.filteredGames.map((entry) => entry.id)).toEqual([1]);
   });
 });
+
+/** One game per badge, plus an "uncracked" decoy that must never match. */
+const badgeGames = [
+  game(1, 'Alpha', { has_denuvo: true }),
+  game(2, 'Beta', { uco2_supported: true }),
+  game(3, 'Gamma', { crack_status: 'cracked' }),
+  game(4, 'Delta', { drm_protection: 'None' }),
+  game(5, 'Epsilon', { crack_status: 'uncracked', drm_protection: 'Steam' }),
+];
+
+const renderBadgeFilter = () => renderHook(() => useLibraryInstallFilter(badgeGames, false));
+
+describe('useLibraryInstallFilter badge filters', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('restores the persisted badge filter and persists a new one', async () => {
+    localStorage.setItem('aether.library_badge_filter', 'uco2');
+    const { result } = renderBadgeFilter();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.badgeFilter).toBe('uco2');
+    expect(result.current.filteredGames.map((entry) => entry.id)).toEqual([2]);
+
+    act(() => result.current.setBadgeFilter('denuvo'));
+    expect(result.current.badgeFilter).toBe('denuvo');
+    expect(localStorage.getItem('aether.library_badge_filter')).toBe('denuvo');
+    expect(result.current.filteredGames.map((entry) => entry.id)).toEqual([1]);
+  });
+
+  it('matches Denuvo from the flag or the DRM string', async () => {
+    const { result } = renderBadgeFilter();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    act(() => result.current.setBadgeFilter('denuvo'));
+    expect(result.current.filteredGames.map((entry) => entry.id)).toEqual([1]);
+
+    act(() => result.current.setBadgeFilter('all'));
+    expect(result.current.filteredGames).toHaveLength(badgeGames.length);
+  });
+
+  it('treats cracked and hypervisor as cracked but never uncracked', async () => {
+    const { result } = renderBadgeFilter();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    act(() => result.current.setBadgeFilter('cracked'));
+    expect(result.current.filteredGames.map((entry) => entry.id)).toEqual([3]);
+  });
+
+  it('matches DRM-Free only when the DRM string is exactly none', async () => {
+    const { result } = renderBadgeFilter();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    act(() => result.current.setBadgeFilter('drm_free'));
+    expect(result.current.filteredGames.map((entry) => entry.id)).toEqual([4]);
+  });
+
+  it('reports a badge-specific count and empty message', async () => {
+    const { result } = renderBadgeFilter();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    act(() => result.current.setBadgeFilter('uco2'));
+    expect(result.current.countLabel).toBe('1 game shown');
+    expect(result.current.emptyMessage).toContain('UCO2');
+  });
+});

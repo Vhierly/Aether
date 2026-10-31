@@ -11,6 +11,50 @@ import { filterAndSortGames } from '../util/search';
  *  value from settings.json (if set) so users don't lose their preference. */
 export type LibraryInstallFilter = 'all' | 'installed' | 'installing' | 'not_installed';
 
+/** Badge filters use the flags the library already enriches, so switching one
+ *  is pure client work: no rescan, no new IPC. */
+export type LibraryBadgeFilter = 'all' | 'denuvo' | 'uco2' | 'cracked' | 'drm_free';
+
+export const LIBRARY_BADGE_FILTERS: { id: LibraryBadgeFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'denuvo', label: 'Denuvo' },
+  { id: 'uco2', label: 'UCO2' },
+  { id: 'cracked', label: 'Cracked' },
+  { id: 'drm_free', label: 'DRM-Free' },
+];
+
+const LOCAL_BADGE_KEY = 'aether.library_badge_filter';
+
+const matchesBadgeFilter = (game: InstalledGame, badge: LibraryBadgeFilter): boolean => {
+  const drm = (game.drm_protection ?? '').trim().toLowerCase();
+  switch (badge) {
+    case 'denuvo':
+      return Boolean(game.has_denuvo) || drm.includes('denuvo');
+    case 'uco2':
+      return Boolean(game.uco2_supported);
+    case 'cracked': {
+      // isitcracked reports cracked / hypervisor variants; "uncracked" must
+      // never match, so this is an allow-list rather than a substring test.
+      const status = (game.crack_status ?? '').trim().toLowerCase();
+      return status === 'cracked' || status.startsWith('hv') || status.includes('hypervisor');
+    }
+    case 'drm_free':
+      return drm === 'none';
+    default:
+      return true;
+  }
+};
+
+const readLocalBadgeFilter = (): LibraryBadgeFilter => {
+  try {
+    const raw = localStorage.getItem(LOCAL_BADGE_KEY);
+    const match = LIBRARY_BADGE_FILTERS.find((entry) => entry.id === raw);
+    return match ? match.id : 'all';
+  } catch {
+    return 'all';
+  }
+};
+
 const FILTER_CYCLE: readonly LibraryInstallFilter[] = ['all', 'installed', 'installing', 'not_installed'] as const;
 const LOCAL_FILTER_KEY = 'aether.library_install_filter';
 /** Legacy storage location: read once and then stop touching settings.json
@@ -115,6 +159,7 @@ const emptyMessageFor = (filter: LibraryInstallFilter, total: number, searchQuer
  */
 export const useLibraryInstallFilter = (games: InstalledGame[], isLoading: boolean, searchQuery: string = '') => {
   const [filter, setFilter] = useState<LibraryInstallFilter>('all');
+  const [badgeFilter, setBadgeFilterState] = useState<LibraryBadgeFilter>(readLocalBadgeFilter);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -148,15 +193,19 @@ export const useLibraryInstallFilter = (games: InstalledGame[], isLoading: boole
   const hasSearch = Boolean(searchQuery.trim());
 
   const filteredGames = useMemo(() => {
-    // When searching, ignore the active filter and search all games in real time
-    if (hasSearch) {
-      return filterAndSortGames(games, searchQuery);
-    }
-    if (filter === 'installed') return games.filter((game) => game.installed);
-    if (filter === 'installing') return games.filter((game) => game.installing);
-    if (filter === 'not_installed') return games.filter((game) => !game.installed && !game.installing);
-    return [...games].sort((a, b) => a.name.localeCompare(b.name));
-  }, [games, filter, searchQuery, hasSearch]);
+    // When searching, ignore the active install filter and search all games in
+    // real time; the badge filter is orthogonal and still applies.
+    const base = hasSearch
+      ? filterAndSortGames(games, searchQuery)
+      : filter === 'installed'
+        ? games.filter((game) => game.installed)
+        : filter === 'installing'
+          ? games.filter((game) => game.installing)
+          : filter === 'not_installed'
+            ? games.filter((game) => !game.installed && !game.installing)
+            : [...games].sort((a, b) => a.name.localeCompare(b.name));
+    return badgeFilter === 'all' ? base : base.filter((game) => matchesBadgeFilter(game, badgeFilter));
+  }, [games, filter, searchQuery, hasSearch, badgeFilter]);
 
   /** Persists the new filter to localStorage synchronously and without any
    *  IPC — the preference is local UI state, not something the backend needs
@@ -174,14 +223,37 @@ export const useLibraryInstallFilter = (games: InstalledGame[], isLoading: boole
     await persist(next);
   }, [filter, persist]);
 
+  const setBadgeFilter = useCallback((next: LibraryBadgeFilter) => {
+    setBadgeFilterState(next);
+    try {
+      localStorage.setItem(LOCAL_BADGE_KEY, next);
+    } catch {
+      /* localStorage can be unavailable; the in-memory filter still works. */
+    }
+  }, []);
+
+  const countLabel =
+    badgeFilter !== 'all'
+      ? isLoading || !ready
+        ? 'Scanning Lua library...'
+        : `${filteredGames.length} ${filteredGames.length === 1 ? 'game' : 'games'} shown`
+      : countLabelFor(filter, games.length, filteredGames.length, isLoading, ready, searchQuery);
+
+  const emptyMessage =
+    badgeFilter !== 'all' && !isLoading && ready
+      ? `No games match the ${LIBRARY_BADGE_FILTERS.find((entry) => entry.id === badgeFilter)?.label ?? ''} filter.`
+      : emptyMessageFor(filter, games.length, searchQuery);
+
   return {
     filter,
     ready,
     filteredGames,
     cycleFilter,
+    badgeFilter,
+    setBadgeFilter,
     filterTitle: filterTitleFor(filter),
-    countLabel: countLabelFor(filter, games.length, filteredGames.length, isLoading, ready, searchQuery),
-    emptyMessage: emptyMessageFor(filter, games.length, searchQuery),
+    countLabel,
+    emptyMessage,
     /** CSS modifiers for the active filter button. */
     filterButtonClass:
       filter === 'installed'

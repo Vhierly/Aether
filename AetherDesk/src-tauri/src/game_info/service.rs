@@ -1,6 +1,7 @@
 use crate::core::paths::LocalAppPaths;
 use crate::core::settings::{
-    cache_version_with_currency, load_settings, steam_country_code_for_currency,
+    cache_version_with_currency, load_settings, normalize_store_currency,
+    steam_country_code_for_currency,
 };
 use crate::game_info::cache::{GameInfoCache, GAME_INFO_TTL_SECONDS};
 use crate::game_info::model::{
@@ -39,6 +40,7 @@ impl GameInfoService {
             .cache
             .get(app_id)
             .unwrap_or_else(|| GameInfo::new(app_id));
+        let store_currency = load_settings(&self.app).store_currency;
 
         // Local filesystem data is cheap and deterministic; merge it first so
         // network-derived metadata can use the best available name for heuristics.
@@ -86,7 +88,7 @@ impl GameInfoService {
             tokio::join!(store_items_lookup, appdetails_lookup, hubcap_lookup,);
 
         if let Some(meta) = store_meta {
-            apply_store_items_meta(&mut info, &meta);
+            apply_store_items_meta(&mut info, &meta, &store_currency);
         }
 
         if let Some(data) = appdetails_data {
@@ -204,10 +206,16 @@ impl GameInfoService {
             }
         }
 
-        // Fallback: global (no country) — avoids region-locked N/A.
+        // Fallback: global (no country) — avoids region-locked N/A. The
+        // response can be priced in the Steam account's currency (often USD),
+        // which contradicts the currency chosen in Settings, so drop that
+        // price and keep the localized one from the country call or StoreItems.
         if let Ok(envelope) = api::fetch_app_details_for_country(&client, app_id, None).await {
-            if let Some(data) = envelope.data {
+            if let Some(mut data) = envelope.data {
                 if !data.is_null() && data.as_object().map(|o| !o.is_empty()).unwrap_or(false) {
+                    if let Some(object) = data.as_object_mut() {
+                        object.remove("price_overview");
+                    }
                     return Some(data);
                 }
             }
@@ -302,7 +310,11 @@ impl GameInfoService {
     }
 }
 
-fn apply_store_items_meta(info: &mut GameInfo, meta: &store_items::StoreItemMeta) {
+fn apply_store_items_meta(
+    info: &mut GameInfo,
+    meta: &store_items::StoreItemMeta,
+    store_currency: &str,
+) {
     if !meta.kind.is_empty() {
         info.kind = Some(meta.kind.clone());
     }
@@ -331,7 +343,7 @@ fn apply_store_items_meta(info: &mut GameInfo, meta: &store_items::StoreItemMeta
             .best_purchase_option
             .as_ref()
             .map(|price| GameInfoPrice {
-                currency: None,
+                currency: Some(normalize_store_currency(store_currency).to_uppercase()),
                 initial_cents: None,
                 final_cents: price
                     .final_price_in_cents

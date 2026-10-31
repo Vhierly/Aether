@@ -42,7 +42,10 @@ export const priceSummary = (price?: GameInfoPrice | null, isFree?: boolean | nu
   if (!price) return NA;
   if (price.formattedFinal) return price.formattedFinal;
   if (typeof price.finalCents === 'number') {
-    const currency = (price.currency || 'EUR').toUpperCase();
+    // Never invent a currency: a missing code used to fall back to EUR and
+    // showed euro prices to users who selected IDR (or any other currency).
+    const currency = (price.currency || '').toUpperCase();
+    if (!currency) return (price.finalCents / 100).toFixed(2);
     if (currency === 'USD') return `$${(price.finalCents / 100).toFixed(2)}`;
     if (currency === 'EUR') return `€${(price.finalCents / 100).toFixed(2)}`;
     if (currency === 'JPY') return `¥${price.finalCents}`;

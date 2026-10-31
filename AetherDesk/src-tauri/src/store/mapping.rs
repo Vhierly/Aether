@@ -2,6 +2,7 @@
 //! categories extracted from the two Steam metadata shapes (`SteamStoreItem`
 //! from search, `StoreItemMeta` from the GetItems batch). Pure functions used
 //! by `StoreService`; no network, no state.
+use crate::core::settings::normalize_store_currency;
 use crate::game_info::model::{GameInfoPlatforms, GameInfoPrice, GameInfoStoreCategories};
 use crate::steam::store::SteamStoreItem;
 use crate::steam::store_items;
@@ -18,11 +19,16 @@ pub(super) fn price_from_store_item(item: &SteamStoreItem) -> Option<GameInfoPri
     })
 }
 
-pub(super) fn price_from_store_meta(meta: &store_items::StoreItemMeta) -> Option<GameInfoPrice> {
+pub(super) fn price_from_store_meta(
+    meta: &store_items::StoreItemMeta,
+    store_currency: &str,
+) -> Option<GameInfoPrice> {
     meta.best_purchase_option
         .as_ref()
         .map(|price| GameInfoPrice {
-            currency: None,
+            // GetItems only formats the string; carry the requested currency
+            // so the UI never falls back to a guessed symbol.
+            currency: Some(normalize_store_currency(store_currency).to_uppercase()),
             initial_cents: None,
             final_cents: price
                 .final_price_in_cents
@@ -34,10 +40,12 @@ pub(super) fn price_from_store_meta(meta: &store_items::StoreItemMeta) -> Option
 }
 
 pub(super) fn format_price_fallback(amount_minor: i64, currency: Option<&str>) -> String {
-    match currency.unwrap_or("EUR").to_uppercase().as_str() {
+    match currency.unwrap_or("").to_uppercase().as_str() {
         "USD" => format!("${:.2}", amount_minor as f64 / 100.0),
         "JPY" => format!("¥{}", amount_minor),
         "EUR" => format!("€{:.2}", amount_minor as f64 / 100.0),
+        // No currency at all: a bare amount is safer than inventing a symbol.
+        "" => format!("{:.2}", amount_minor as f64 / 100.0),
         other => format!("{} {:.2}", other, amount_minor as f64 / 100.0),
     }
 }
@@ -81,5 +89,35 @@ pub(super) fn categories_from_store_meta(
         supported_player_category_ids: meta.categories.supported_player_category_ids.clone(),
         feature_category_ids: meta.categories.feature_category_ids.clone(),
         controller_category_ids: meta.categories.controller_category_ids.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn meta_price_carries_the_selected_currency() {
+        let meta = store_items::StoreItemMeta {
+            best_purchase_option: Some(store_items::StoreItemPurchaseOption {
+                formatted_final_price: Some("Rp 150.000".to_string()),
+                final_price_in_cents: Some("15000000".to_string()),
+            }),
+            ..Default::default()
+        };
+
+        let price = price_from_store_meta(&meta, "idr").expect("price mapped");
+        assert_eq!(price.currency.as_deref(), Some("IDR"));
+        assert_eq!(price.final_cents, Some(15000000));
+        assert_eq!(price.formatted_final.as_deref(), Some("Rp 150.000"));
+    }
+
+    #[test]
+    fn fallback_price_never_guesses_eur() {
+        assert_eq!(format_price_fallback(1999, None), "19.99");
+        assert_eq!(
+            format_price_fallback(15000000, Some("IDR")),
+            "IDR 150000.00"
+        );
     }
 }

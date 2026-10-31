@@ -340,7 +340,7 @@ impl SteamStore {
 
         if let Some(html) = legacy.results_html.as_deref() {
             if !html.trim().is_empty() {
-                return Ok(parse_search_results_html(html, country_code));
+                return Ok(parse_search_results_html(html, store_currency));
             }
         }
 
@@ -471,7 +471,7 @@ fn store_front_params(
     params
 }
 
-fn parse_search_results_html(html: &str, country_code: &str) -> Vec<SteamStoreItem> {
+fn parse_search_results_html(html: &str, store_currency: &str) -> Vec<SteamStoreItem> {
     let Ok(row_re) = Regex::new(
         r#"(?s)<a\b[^>]*data-ds-appid=\"(?P<appid>\d+)\"[^>]*class=\"search_result_row[^\"]*\"[^>]*>(?P<body>.*?)</a>"#,
     ) else {
@@ -510,7 +510,10 @@ fn parse_search_results_html(html: &str, country_code: &str) -> Vec<SteamStoreIt
                 image_url,
                 item_type: Some("app".to_string()),
                 price: final_price.map(|price| SteamStorePrice {
-                    currency: Some(currency_for_country(country_code).to_string()),
+                    // The selected currency, not a country guess: the HTML row
+                    // carries only a number, so the symbol must come from the
+                    // setting the request was made with.
+                    currency: Some(normalize_store_currency(store_currency).to_uppercase()),
                     initial: None,
                     final_price: Some(price),
                     discount_percent: None,
@@ -526,14 +529,6 @@ fn parse_search_results_html(html: &str, country_code: &str) -> Vec<SteamStoreIt
             })
         })
         .collect()
-}
-
-fn currency_for_country(country_code: &str) -> &'static str {
-    match country_code.trim().to_uppercase().as_str() {
-        "US" => "USD",
-        "JP" => "JPY",
-        _ => "EUR",
-    }
 }
 
 /// Parses the newer Steam search-results payload: a flat `items` array of
@@ -815,10 +810,22 @@ mod tests {
     fn legacy_html_payload_still_parses() {
         let html = r#"<a data-ds-appid="111" class="search_result_row"><span class="title">Legacy Game</span></a>
 <a data-ds-appid="222" class="search_result_row"><span class="title">Another</span></a>"#;
-        let parsed = parse_search_results_html(html, "US");
+        let parsed = parse_search_results_html(html, "usd");
         assert_eq!(parsed.len(), 2);
         assert_eq!(parsed[0].id, 111);
         assert_eq!(parsed[1].id, 222);
+    }
+
+    #[test]
+    fn legacy_html_payload_uses_the_selected_currency() {
+        // The price attribute lives inside the row body (the `<a>` tag's own
+        // attributes are outside the captured `body`), so the fixture puts it
+        // on a sibling span next to the title.
+        let html = r#"<a data-ds-appid="111" class="search_result_row"><span class="title">Legacy Game</span><span data-price-final="150000"></span></a>"#;
+        let parsed = parse_search_results_html(html, "idr");
+        let price = parsed[0].price.as_ref().expect("price parsed");
+        assert_eq!(price.currency.as_deref(), Some("IDR"));
+        assert_eq!(price.final_price, Some(150000));
     }
 
     #[test]
@@ -831,7 +838,7 @@ mod tests {
         // dropping rows, which would also drop the dedup safety net.
         let html = r#"<a data-ds-appid="1" class="search_result_row"><span class="title">Dup</span></a>
 <a data-ds-appid="1" class="search_result_row"><span class="title">Dup</span></a>"#;
-        let parsed = parse_search_results_html(html, "US");
+        let parsed = parse_search_results_html(html, "usd");
         assert_eq!(parsed.len(), 2);
         assert!(parsed.iter().all(|g| g.id == 1));
     }

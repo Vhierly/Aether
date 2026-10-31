@@ -15,7 +15,7 @@ import { enrichUco2Flags } from '../hooks/useUco2Enrichment';
 import { enrichDenuvoFlags } from '../hooks/useDenuvoEnrichment';
 import { enrichCrackStatus } from '../hooks/useCrackStatusEnrichment';
 import { enrichPcDrm } from '../hooks/usePcDrmEnrichment';
-import { useLibraryInstallFilter } from '../hooks/useLibraryInstallFilter';
+import { useLibraryInstallFilter, LIBRARY_BADGE_FILTERS } from '../hooks/useLibraryInstallFilter';
 import { StatusType } from '../types/ui';
 import { requireSteamPath } from '../hooks/useSettings';
 
@@ -52,6 +52,8 @@ export const LibraryView = memo(function LibraryView({
     countLabel,
     emptyMessage,
     filterButtonClass,
+    badgeFilter,
+    setBadgeFilter,
   } = useLibraryInstallFilter(enrichedGames.length ? enrichedGames : games, isLoading, searchQuery);
 
   const [actionGame, setActionGame] = useState<InstalledGame | null>(null);
@@ -256,6 +258,20 @@ export const LibraryView = memo(function LibraryView({
             {filter === 'not_installed' ? <CloseIcon /> : filter === 'installing' ? <HourglassIcon /> : <PlayIcon />}
           </button>
         </div>
+      </div>
+
+      <div className="library-badge-filters" role="group" aria-label="Filter library by badge">
+        {LIBRARY_BADGE_FILTERS.map((badge) => (
+          <button
+            key={badge.id}
+            type="button"
+            className={`library-badge-filter${badgeFilter === badge.id ? ' active' : ''}`}
+            aria-pressed={badgeFilter === badge.id}
+            onClick={() => setBadgeFilter(badge.id)}
+          >
+            {badge.label}
+          </button>
+        ))}
       </div>
 
       <div className="store-separator"></div>

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import type { GameInfoPrice } from '../modals/gameInfoTypes';
 import { toErrorMessage } from '../util/errors';
 
 export interface StoreGameResult {
@@ -16,6 +17,8 @@ export interface StoreGameResult {
   genres?: string[];
   /** Steam release timestamp, already supplied by `UnifiedStoreGame`. */
   release_date_unix?: number;
+  /** Steam price, when the backend supplied one. */
+  price?: GameInfoPrice | null;
   /** Filled in by the DRM hooks; rendered as a badge on the store card. */
   drm_protection?: string;
   uco2_supported?: boolean;
