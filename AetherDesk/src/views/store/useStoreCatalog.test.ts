@@ -200,4 +200,32 @@ describe('useStoreCatalog', () => {
     rerender({ active: true });
     await waitFor(() => expect(enrich).toHaveBeenCalled());
   });
+
+  it('filters page games by the selected store badge filter', () => {
+    const denuvoGame = { ...games(1)[0], id: 1, appId: '1', has_denuvo: true, drm_protection: 'Denuvo' };
+    const uco2Game = { ...games(1)[0], id: 2, appId: '2', uco2_supported: true };
+    const crackedGame = { ...games(1)[0], id: 3, appId: '3', crack_status: 'cracked' };
+    const drmFreeGame = { ...games(1)[0], id: 4, appId: '4', drm_protection: 'None' };
+    const regularGame = { ...games(1)[0], id: 5, appId: '5' };
+    state.results = [denuvoGame, uco2Game, crackedGame, drmFreeGame, regularGame];
+
+    const { result } = renderHook(() => useStoreCatalog({ active: true, settingsReady: true, settingsRevision: 1 }));
+
+    expect(result.current.pageGames.map((g) => g.appId)).toEqual(['1', '2', '3', '4', '5']);
+
+    act(() => result.current.setBadgeFilter('denuvo'));
+    expect(result.current.pageGames.map((g) => g.appId)).toEqual(['1']);
+
+    act(() => result.current.setBadgeFilter('uco2'));
+    expect(result.current.pageGames.map((g) => g.appId)).toEqual(['2']);
+
+    act(() => result.current.setBadgeFilter('cracked'));
+    expect(result.current.pageGames.map((g) => g.appId)).toEqual(['3']);
+
+    act(() => result.current.setBadgeFilter('drm_free'));
+    expect(result.current.pageGames.map((g) => g.appId)).toEqual(['4']);
+
+    act(() => result.current.setBadgeFilter('all'));
+    expect(result.current.pageGames.map((g) => g.appId)).toEqual(['1', '2', '3', '4', '5']);
+  });
 });

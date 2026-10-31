@@ -122,6 +122,22 @@ export const StoreView = memo(function StoreView({
       </div>
       <div className="store-separator"></div>
 
+      <div className="library-badge-filters" role="group" aria-label="Filter store by badge">
+        {catalog.STORE_BADGE_FILTERS.map((badge) => (
+          <button
+            key={badge.id}
+            type="button"
+            className={`library-badge-filter${catalog.badgeFilter === badge.id ? ' active' : ''}`}
+            aria-pressed={catalog.badgeFilter === badge.id}
+            onClick={() => catalog.setBadgeFilter(badge.id)}
+          >
+            {badge.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="store-separator"></div>
+
       <StoreGameGrid
         games={catalog.pageGames}
         actions={cardActions}

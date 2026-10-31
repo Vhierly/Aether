@@ -7,6 +7,7 @@ import { enrichGenres } from '../../hooks/useGenreEnrichment';
 import { useStoreSearch } from '../../hooks/useStoreSearch';
 import { preloadGameCovers } from '../../ui/GameCover';
 import { useTrendingStore } from './useTrendingStore';
+import { useStoreBadgeFilter, matchesStoreBadgeFilter } from './useStoreBadgeFilter';
 import { STORE_ITEMS_PER_PAGE, compareStoreGames, type StoreSortMode } from '../../constants/store';
 
 interface Params {
@@ -21,6 +22,7 @@ export function useStoreCatalog({ active, settingsRevision, settingsReady }: Par
   const [sortMode, setSortMode] = useState<StoreSortMode>('newest');
   const [genreFilter, setGenreFilter] = useState<string>('');
   const [storeFrontFilter, setStoreFrontFilter] = useState<string>('trending');
+  const { badgeFilter, setBadgeFilter, STORE_BADGE_FILTERS } = useStoreBadgeFilter();
   const observedSettingsRevision = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const storeSearch = useStoreSearch();
@@ -78,14 +80,15 @@ export function useStoreCatalog({ active, settingsRevision, settingsReady }: Par
 
   const availableGenres = Array.from(new Set(results.flatMap((g) => g.genres || []))).sort();
 
-  const filteredResults = results.filter((g) => (genreFilter ? (g.genres || []).includes(genreFilter) : true));
+  const genreFiltered = results.filter((g) => (genreFilter ? (g.genres || []).includes(genreFilter) : true));
+  const badgeFiltered = genreFiltered.filter((g) => matchesStoreBadgeFilter(g, badgeFilter));
   // Browse mode keeps the fetch order: each incoming batch is ordered on
   // arrival, so sorting the whole accumulated catalog here would move games
   // between pages every time a later offset loads. Search replaces the list
   // instead of appending, so a full sort is safe there.
   const filteredSortedResults = activeQuery.trim()
-    ? [...filteredResults].sort((a, b) => compareStoreGames(a, b, sortMode))
-    : filteredResults;
+    ? [...badgeFiltered].sort((a, b) => compareStoreGames(a, b, sortMode))
+    : badgeFiltered;
 
   const totalPages = Math.ceil(filteredSortedResults.length / STORE_ITEMS_PER_PAGE) || 1;
   const startIndex = (page - 1) * STORE_ITEMS_PER_PAGE;
@@ -294,5 +297,8 @@ export function useStoreCatalog({ active, settingsRevision, settingsReady }: Par
     availableGenres,
     storeFrontFilter,
     setStoreFrontFilter,
+    badgeFilter,
+    setBadgeFilter,
+    STORE_BADGE_FILTERS,
   };
 }
