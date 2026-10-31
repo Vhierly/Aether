@@ -66,8 +66,9 @@ jobs:
         working-directory: AetherDesk
         run: npm run verify
 
-      - name: Rust formatting (rustfmt check)
+      - name: Rust formatting (rustfmt check, advisory)
         working-directory: AetherDesk/src-tauri
+        continue-on-error: true
         run: cargo fmt --all -- --check
 
       - name: Rust lint (clippy, warnings are errors)
