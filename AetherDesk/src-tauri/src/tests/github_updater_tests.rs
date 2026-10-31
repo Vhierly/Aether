@@ -99,13 +99,13 @@ fn test_atom_and_html_tag_parsing() {
 }
 
 #[test]
-fn test_release_repo_label_defaults_to_upstream() {
-    // Upstream's own build must keep pointing at michelegoku3/Aether.
+fn test_release_repo_label_defaults_to_fork() {
+    // A build without the env override must still update AetherDesk from the fork.
     assert_eq!(
         GithubReleaseManager::release_repo_label(),
         format!(
             "{}/{}",
-            option_env!("AETHER_RELEASE_OWNER").unwrap_or("michelegoku3"),
+            option_env!("AETHER_RELEASE_OWNER").unwrap_or("Vhierly"),
             option_env!("AETHER_RELEASE_NAME").unwrap_or("Aether")
         )
     );
@@ -115,8 +115,8 @@ fn test_release_repo_label_defaults_to_upstream() {
 fn test_dll_channel_keeps_upstream_when_only_desk_is_overridden() {
     use crate::updater::github::{dll_repo, test_repo};
 
-    // The fork build sets AETHER_RELEASE_* only; the DLL channel must still
-    // read upstream, which is where the AetherDLL releases live.
+    // Only the desk channel is overridden; the DLL channel must still read
+    // upstream, which is where the AetherDLL releases live.
     let expected_dll = test_repo(
         option_env!("AETHER_DLL_RELEASE_OWNER").unwrap_or("michelegoku3"),
         option_env!("AETHER_DLL_RELEASE_NAME").unwrap_or("Aether"),
@@ -125,7 +125,7 @@ fn test_dll_channel_keeps_upstream_when_only_desk_is_overridden() {
 
     // And it must not silently follow a desk-only override.
     let desk = test_repo(
-        option_env!("AETHER_RELEASE_OWNER").unwrap_or("michelegoku3"),
+        option_env!("AETHER_RELEASE_OWNER").unwrap_or("Vhierly"),
         option_env!("AETHER_RELEASE_NAME").unwrap_or("Aether"),
     );
     let dll_env_set = option_env!("AETHER_DLL_RELEASE_OWNER").is_some();
@@ -177,7 +177,7 @@ fn test_build_desk_test_update_info_respects_version_gate() {
         info_equal.repo,
         format!(
             "{}/{}",
-            option_env!("AETHER_RELEASE_OWNER").unwrap_or("michelegoku3"),
+            option_env!("AETHER_RELEASE_OWNER").unwrap_or("Vhierly"),
             option_env!("AETHER_RELEASE_NAME").unwrap_or("Aether")
         )
     );

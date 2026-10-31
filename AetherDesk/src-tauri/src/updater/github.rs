@@ -58,7 +58,7 @@ impl RepoSpec {
 fn desk_repo() -> RepoSpec {
     static REPO: OnceLock<RepoSpec> = OnceLock::new();
     *REPO.get_or_init(|| RepoSpec {
-        owner: option_env!("AETHER_RELEASE_OWNER").unwrap_or(REPO_OWNER_DEFAULT),
+        owner: option_env!("AETHER_RELEASE_OWNER").unwrap_or(DESK_REPO_OWNER_DEFAULT),
         name: option_env!("AETHER_RELEASE_NAME").unwrap_or(REPO_NAME),
     })
 }
@@ -69,7 +69,7 @@ fn desk_repo() -> RepoSpec {
 pub(crate) fn dll_repo() -> RepoSpec {
     static REPO: OnceLock<RepoSpec> = OnceLock::new();
     *REPO.get_or_init(|| RepoSpec {
-        owner: option_env!("AETHER_DLL_RELEASE_OWNER").unwrap_or(REPO_OWNER_DEFAULT),
+        owner: option_env!("AETHER_DLL_RELEASE_OWNER").unwrap_or(DLL_REPO_OWNER_DEFAULT),
         name: option_env!("AETHER_DLL_RELEASE_NAME").unwrap_or(REPO_NAME),
     })
 }
@@ -80,7 +80,12 @@ pub(crate) fn test_repo(owner: &'static str, name: &'static str) -> RepoSpec {
     RepoSpec { owner, name }
 }
 
-const REPO_OWNER_DEFAULT: &str = "michelegoku3";
+/// AetherDesk updates come from this fork by default, so a local build
+/// (`build_desk.cmd`) behaves like the CI release. Both values stay overridable
+/// with AETHER_RELEASE_OWNER / AETHER_RELEASE_NAME.
+const DESK_REPO_OWNER_DEFAULT: &str = "Vhierly";
+/// AetherDLL releases stay on upstream: this fork publishes no `dll-*` tags.
+const DLL_REPO_OWNER_DEFAULT: &str = "michelegoku3";
 const REPO_NAME: &str = "Aether";
 const USER_AGENT: &str = "AetherDesk-Updater";
 
