@@ -7,9 +7,7 @@ import { enrichGenres } from '../../hooks/useGenreEnrichment';
 import { useStoreSearch } from '../../hooks/useStoreSearch';
 import { preloadGameCovers } from '../../ui/GameCover';
 import { useTrendingStore } from './useTrendingStore';
-import { STORE_ITEMS_PER_PAGE } from '../../constants/store';
-
-type SortMode = 'newest' | 'trending' | 'name';
+import { STORE_ITEMS_PER_PAGE, compareStoreGames, type StoreSortMode } from '../../constants/store';
 
 interface Params {
   /** Hidden views stay mounted; only the visible tab may start network work. */
@@ -20,13 +18,13 @@ interface Params {
 
 export function useStoreCatalog({ active, settingsRevision, settingsReady }: Params) {
   const [page, setPage] = useState(1);
-  const [sortMode, setSortMode] = useState<SortMode>('newest');
+  const [sortMode, setSortMode] = useState<StoreSortMode>('newest');
   const [genreFilter, setGenreFilter] = useState<string>('');
   const [storeFrontFilter, setStoreFrontFilter] = useState<string>('trending');
   const observedSettingsRevision = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const storeSearch = useStoreSearch();
-  const trending = useTrendingStore(storeSearch.setResults, storeFrontFilter);
+  const trending = useTrendingStore(storeSearch.setResults, storeFrontFilter, sortMode);
   const { results, setResults, isLoading, hasSearched, activeQuery, error, search, clear } = storeSearch;
 
   useEffect(() => {
@@ -80,19 +78,14 @@ export function useStoreCatalog({ active, settingsRevision, settingsReady }: Par
 
   const availableGenres = Array.from(new Set(results.flatMap((g) => g.genres || []))).sort();
 
-  const filteredSortedResults = [...results]
-    .filter((g) => (genreFilter ? (g.genres || []).includes(genreFilter) : true))
-    .sort((a, b) => {
-      if (sortMode === 'newest') {
-        const da = a.release_date_unix ?? 0;
-        const db = b.release_date_unix ?? 0;
-        return db - da;
-      }
-      if (sortMode === 'name') {
-        return a.name.localeCompare(b.name);
-      }
-      return 0; // trending: keep original order
-    });
+  const filteredResults = results.filter((g) => (genreFilter ? (g.genres || []).includes(genreFilter) : true));
+  // Browse mode keeps the fetch order: each incoming batch is ordered on
+  // arrival, so sorting the whole accumulated catalog here would move games
+  // between pages every time a later offset loads. Search replaces the list
+  // instead of appending, so a full sort is safe there.
+  const filteredSortedResults = activeQuery.trim()
+    ? [...filteredResults].sort((a, b) => compareStoreGames(a, b, sortMode))
+    : filteredResults;
 
   const totalPages = Math.ceil(filteredSortedResults.length / STORE_ITEMS_PER_PAGE) || 1;
   const startIndex = (page - 1) * STORE_ITEMS_PER_PAGE;
@@ -119,6 +112,22 @@ export function useStoreCatalog({ active, settingsRevision, settingsReady }: Par
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 });
   }, [page, activeQuery, sortMode, genreFilter]);
+
+  const prevSortMode = useRef(sortMode);
+  // An explicit sort change reorders the loaded catalog once. Batches loaded
+  // afterwards still append, so pages stay put after this reflow.
+  useEffect(() => {
+    if (prevSortMode.current === sortMode) return;
+    prevSortMode.current = sortMode;
+    if (activeQuery.trim()) return;
+    setResults((current) => [...current].sort((a, b) => compareStoreGames(a, b, sortMode)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortMode]);
+
+  // A genre filter or a reset can shrink the catalog under the current page.
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   useEffect(() => {
     if (!active || pageGames.length === 0) return;

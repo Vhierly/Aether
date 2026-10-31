@@ -1,21 +1,23 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
+import type { StoreSortMode } from '../../constants/store';
 import type { StoreGameResult } from '../../hooks/useStoreSearch';
 import { invokeMock, mockInvokeCommands } from '../../test/tauriMocks';
 import { useTrendingStore } from './useTrendingStore';
 
-const game = (id: number): StoreGameResult => ({
+const game = (id: number, releaseDate?: number): StoreGameResult => ({
   id,
   appId: String(id),
   name: `Game ${id}`,
   has_manifest: true,
   has_denuvo: false,
+  ...(releaseDate === undefined ? {} : { release_date_unix: releaseDate }),
 });
 
-const useHarness = () => {
+const useHarness = (sortMode: StoreSortMode = 'trending') => {
   const [results, setResults] = useState<StoreGameResult[]>([]);
-  return { results, trending: useTrendingStore(setResults) };
+  return { results, trending: useTrendingStore(setResults, 'trending', sortMode) };
 };
 
 describe('useTrendingStore', () => {
@@ -37,6 +39,20 @@ describe('useTrendingStore', () => {
       storeFrontFilter: 'trending',
     });
     expect(result.current.results.map((item) => item.id)).toEqual([1, 2, 3]);
+  });
+
+  it('orders each batch but appends it, so earlier pages do not move', async () => {
+    invokeMock
+      .mockResolvedValueOnce([game(1, 300), game(2, 100), game(3, 200)])
+      .mockResolvedValueOnce([game(4, 400), game(5, 50)]);
+    const { result } = renderHook(() => useHarness('newest'));
+
+    await act(() => result.current.trending.loadNext(3));
+    await act(() => result.current.trending.loadNext(2));
+
+    // Batch 2 has the newest release overall, but it still lands after batch 1:
+    // a later offset must never renumber the pages already on screen.
+    expect(result.current.results.map((item) => item.id)).toEqual([1, 3, 2, 4, 5]);
   });
 
   it('reserves unique offsets for concurrent top-ups', async () => {

@@ -118,6 +118,32 @@ describe('useStoreCatalog', () => {
     }
   });
 
+  it('keeps browse page membership in fetch order instead of re-sorting', () => {
+    const older = { ...games(1)[0], id: 1, appId: '1', release_date_unix: 100 };
+    const newer = { ...games(1)[0], id: 2, appId: '2', release_date_unix: 300 };
+    state.results = [older, newer];
+    const { result } = renderHook(() => useStoreCatalog({ active: true, settingsReady: true, settingsRevision: 1 }));
+
+    // Sort is applied per loaded batch; re-sorting the accumulated catalog here
+    // is what made a game leave page 1 after the next offset arrived.
+    expect(result.current.pageGames.map((game) => game.id)).toEqual([1, 2]);
+  });
+
+  it('re-sorts the loaded browse catalog when the sort mode changes', () => {
+    const zeta = { ...games(1)[0], id: 1, appId: '1', name: 'Zeta', release_date_unix: 300 };
+    const alpha = { ...games(1)[0], id: 2, appId: '2', name: 'Alpha', release_date_unix: 100 };
+    state.results = [zeta, alpha];
+    const { result } = renderHook(() => useStoreCatalog({ active: true, settingsReady: true, settingsRevision: 1 }));
+
+    act(() => result.current.setSortMode('name'));
+
+    const sorted = setResults.mock.calls
+      .map(([updater]) => updater as (items: StoreGameResult[]) => StoreGameResult[])
+      .map((updater) => updater([zeta, alpha]))
+      .find((items) => items.map((game) => game.id).join(',') === '2,1');
+    expect(sorted).toBeDefined();
+  });
+
   it('enriches only visible search results with Denuvo flags', async () => {
     state.results = games(2);
     state.activeQuery = 'query';

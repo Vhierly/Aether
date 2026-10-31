@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { compareStoreGames, type StoreSortMode } from '../../constants/store';
 import type { StoreGameResult } from '../../hooks/useStoreSearch';
 
 interface TrendingSession {
@@ -18,12 +19,15 @@ const createSession = (generation: number): TrendingSession => ({
 
 export function useTrendingStore(
   setResults: Dispatch<SetStateAction<StoreGameResult[]>>,
-  storeFrontFilter: string = 'trending'
+  storeFrontFilter: string = 'trending',
+  sortMode: StoreSortMode = 'trending'
 ) {
   const [isLoading, setIsLoading] = useState(false);
   const sessionRef = useRef<TrendingSession>(createSession(0));
   const filterRef = useRef(storeFrontFilter);
   filterRef.current = storeFrontFilter;
+  const sortRef = useRef(sortMode);
+  sortRef.current = sortMode;
 
   const reset = useCallback(() => {
     sessionRef.current = createSession(sessionRef.current.generation + 1);
@@ -32,10 +36,13 @@ export function useTrendingStore(
 
   const mergeGames = useCallback(
     (incoming: StoreGameResult[]) => {
+      // Each batch is ordered by itself and appended. Ordering the merged
+      // catalog here would push games off the page the user is reading.
+      const ordered = [...incoming].sort((a, b) => compareStoreGames(a, b, sortRef.current));
       setResults((current) => {
         const seen = new Set(current.map((game) => Number(game.id)));
         const merged = [...current];
-        for (const game of incoming) {
+        for (const game of ordered) {
           if (!seen.has(Number(game.id))) {
             seen.add(Number(game.id));
             merged.push(game);
